@@ -1,0 +1,15 @@
+[package]
+name = "wayno-algorithms"
+version = "0.1.0"
+edition = "2021"
+authors = ["Wayno Core Engineering <tech@wayno.africa>"]
+description = "High-throughput VRP solver, packing algorithms and geohash clustering in Rust"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+geo = "0.28"
+rayon = "1.8"
+
+[lib]
+crate-type = ["cdylib", "rlib"]

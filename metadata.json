@@ -1,0 +1,8 @@
+{
+  "name": "WAYNO - B2B FMCG Procurement & Fulfillment Network",
+  "description": "Scalable search-first B2B FMCG procurement and fulfillment network connecting retail dukas, wholesalers, and riders with an aggregated market intelligence pipeline, predictive demand analytics, promotional placements, real-time operations, and architecture telemetry.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

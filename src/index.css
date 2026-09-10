@@ -1,0 +1,144 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-app: #F8FAFC;
+    --bg-card: #FFFFFF;
+    --border-color: #E2E8F0;
+    --border-subtle: #F1F5F9;
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --text-muted: #94A3B8;
+  }
+
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color-scheme: light;
+  }
+  
+  body {
+    background-color: #F8FAFC;
+    color: #0F172A;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Crisp professional scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F8FAFC;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Outlook Clean Design Utility & Component Classes */
+.outlook-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.outlook-card-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #E2E8F0;
+  background-color: #FAFAFA;
+}
+
+.outlook-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  border-bottom: 2px solid transparent;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.outlook-tab:hover {
+  color: #0F172A;
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.outlook-tab.active {
+  color: #0F172A;
+  font-weight: 600;
+  border-bottom: 2px solid #0F172A;
+}
+
+.outlook-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  transition: all 120ms ease;
+  cursor: pointer;
+}
+
+.outlook-btn-primary {
+  background-color: #0F172A;
+  color: #FFFFFF;
+  border: 1px solid #0F172A;
+}
+
+.outlook-btn-primary:hover {
+  background-color: #1E293B;
+}
+
+.outlook-btn-secondary {
+  background-color: #FFFFFF;
+  color: #1E293B;
+  border: 1px solid #CBD5E1;
+}
+
+.outlook-btn-secondary:hover {
+  background-color: #F8FAFC;
+  border-color: #94A3B8;
+}
+
+.outlook-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.outlook-input {
+  background-color: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #0F172A;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.outlook-input:focus {
+  border-color: #0F172A;
+  box-shadow: 0 0 0 1px #0F172A;
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@wayno/service-search",
+  "version": "1.0.0",
+  "description": "Wayno Real-Time FMCG Search & Multilingual Phonetic Core",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@wayno/types": "workspace:*",
+    "fastify": "^4.26.0"
+  }
+}

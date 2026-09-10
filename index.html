@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Gracefully prevent browser extension errors (e.g., MetaMask, Web3 wallet injection in sandbox iframe)
+      (function() {
+        function shouldSuppress(msg, source) {
+          if (!msg) return false;
+          var str = typeof msg === 'string' ? msg : (msg.message || String(msg));
+          var src = source ? String(source) : '';
+          return (
+            str.indexOf('MetaMask') !== -1 ||
+            str.indexOf('metamask') !== -1 ||
+            str.indexOf('ethereum') !== -1 ||
+            str.indexOf('Failed to connect to MetaMask') !== -1 ||
+            src.indexOf('chrome-extension://') !== -1 ||
+            src.indexOf('moz-extension://') !== -1
+          );
+        }
+
+        window.addEventListener('error', function(e) {
+          if (shouldSuppress(e.message || (e.error && e.error.message), e.filename)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return true;
+          }
+        }, true);
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var reason = e.reason;
+          var msg = reason ? (reason.message || String(reason)) : '';
+          if (shouldSuppress(msg)) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
+    <title>WAYNO - B2B FMCG Procurement & Fulfillment Network</title>
+    <meta name="description" content="Scalable search-first B2B FMCG procurement and fulfillment network connecting retail dukas, wholesalers, and riders with an aggregated market intelligence pipeline, predictive demand analytics, promotional placements, real-time operations, and architecture telemetry." />
+    <meta property="og:title" content="WAYNO - B2B FMCG Procurement & Fulfillment Network" />
+    <meta property="og:description" content="Scalable search-first B2B FMCG procurement and fulfillment network connecting retail dukas, wholesalers, and riders with an aggregated market intelligence pipeline, predictive demand analytics, promotional placements, real-time operations, and architecture telemetry." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-neutral-50 text-neutral-900 font-sans antialiased selection:bg-black selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

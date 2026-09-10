@@ -1,0 +1,6 @@
+{
+  "name": "@wayno/config",
+  "version": "1.0.0",
+  "description": "Wayno Shared Monorepo Configurations (ESLint, TSConfig, Prettier, Tailwind)",
+  "private": true
+}
