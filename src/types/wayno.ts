@@ -53,6 +53,7 @@ export interface Product {
   barcode: string;
   image: string;
   recommendedRetailPrice: number; // KES
+  basePrice?: number;
 }
 
 export interface SupplierProduct {
@@ -65,6 +66,7 @@ export interface SupplierProduct {
   stockQty: number;
   distanceKm: number;
   updatedAt: string;
+  supplierId?: string;
 }
 
 export interface SearchResultItem {
@@ -85,17 +87,27 @@ export interface CartItem {
 }
 
 export type OrderState =
-  | 'CREATED'
+  // V1 Master Spec 16-State Finite State Machine
+  | 'CART'
+  | 'CHECKOUT_PENDING'
   | 'PAYMENT_PENDING'
   | 'PAID'
-  | 'FULFILLMENT_PENDING'
-  | 'SUPPLIER_CONFIRMED'
+  | 'SUPPLIER_PENDING'
+  | 'ACCEPTED'
+  | 'PREPARING'
   | 'READY_FOR_PICKUP'
   | 'RIDER_ASSIGNED'
   | 'PICKED_UP'
   | 'OUT_FOR_DELIVERY'
   | 'DELIVERED'
   | 'CANCELLED'
+  | 'FAILED'
+  | 'REFUND_PENDING'
+  | 'REFUNDED'
+  // Intermediary / UI Aliases for backward compatibility
+  | 'CREATED'
+  | 'FULFILLMENT_PENDING'
+  | 'SUPPLIER_CONFIRMED'
   | 'PARTIALLY_FULFILLED';
 
 export interface OrderItem {
@@ -107,6 +119,40 @@ export interface OrderItem {
   totalPrice: number;
   wholesalerLocationId: string;
   wholesalerName: string;
+  isSubstituted?: boolean;
+  originalProductId?: string;
+  originalProductName?: string;
+  substitutionReason?: string;
+}
+
+export type DeliveryExceptionCode =
+  | 'SHOP_CLOSED'
+  | 'RECIPIENT_UNREACHABLE'
+  | 'DAMAGED_GOODS_REFUSED'
+  | 'PAYMENT_DISPUTE'
+  | 'WRONG_LOCATION';
+
+export interface DeliveryException {
+  code: DeliveryExceptionCode;
+  reason: string;
+  timestamp: string;
+  reportedByRiderId: string;
+  reportedByRiderName: string;
+  reportedByName?: string;
+  resolved?: boolean;
+  resolutionNote?: string;
+}
+
+export interface RefundRecord {
+  refundId: string;
+  amount: number;
+  reason: string;
+  initiatedAt: string;
+  completedAt?: string;
+  mpesaReversalRef?: string;
+  reversalTransactionId?: string;
+  authorizedBy?: string;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED';
 }
 
 export interface Order {
@@ -115,13 +161,14 @@ export interface Order {
   shopName: string;
   shopAddress: string;
   retailerPhone: string;
+  shopOwnerPhone?: string;
   items: OrderItem[];
   subtotal: number;
   deliveryFee: number;
   totalAmount: number;
   currency: string;
   status: OrderState;
-  stateHistory: { state: OrderState; timestamp: string; note: string }[];
+  stateHistory: { state: OrderState; timestamp: string; note: string; actor?: string }[];
   paymentId?: string;
   paymentMethod: 'M-PESA' | 'CREDIT_LINE' | 'CASH_ON_DELIVERY';
   wholesalerLocationId: string;
@@ -132,6 +179,9 @@ export interface Order {
   pickupOtp: string;
   deliveryOtp: string;
   estimatedDeliveryMins: number;
+  deliveryException?: DeliveryException;
+  reconciliationStatus?: 'SETTLED' | 'PENDING' | 'DISCREPANCY' | 'REVERSED';
+  refundRecord?: RefundRecord;
   createdAt: string;
   updatedAt: string;
 }
@@ -145,7 +195,8 @@ export interface PaymentRecord {
   phoneNumber: string;
   amount: number;
   currency: string;
-  status: 'INITIATED' | 'SUCCESS' | 'FAILED';
+  status: 'INITIATED' | 'SUCCESS' | 'FAILED' | 'REVERSED';
+  reconciliationState?: 'MATCHED' | 'UNMATCHED_AMOUNT' | 'DUPLICATE_CALLBACK_PREVENTED' | 'REFUNDED';
   initiatedAt: string;
   completedAt?: string;
   failureReason?: string;
@@ -157,6 +208,7 @@ export interface Rider {
   phone: string;
   vehicleType: 'Boda Boda (Motorbike)' | 'Tuk-Tuk Cargo' | 'Electric Cargo';
   vehiclePlate: string;
+  plateNumber?: string;
   rating: number;
   status: 'AVAILABLE' | 'EN_ROUTE_PICKUP' | 'EN_ROUTE_DELIVERY' | 'OFFLINE';
   currentLat: number;
@@ -180,9 +232,16 @@ export type EventType =
   | 'PAYMENT_FAILED'
   | 'SUPPLIER_ORDERED'
   | 'SUPPLIER_ACCEPTED'
+  | 'SUPPLIER_INVENTORY_UPDATED'
+  | 'ORDER_ITEM_SUBSTITUTED'
   | 'RIDER_ASSIGNED'
+  | 'RIDER_REASSIGNED'
   | 'ORDER_PICKED_UP'
+  | 'OUT_FOR_DELIVERY'
   | 'ORDER_DELIVERED'
+  | 'DELIVERY_EXCEPTION_RECORDED'
+  | 'REFUND_PROCESSED'
+  | 'CREDIT_REPAYMENT_RECORDED'
   | 'PROMOTION_IMPRESSION'
   | 'PROMOTION_CLICK'
   | 'PROMOTION_CONVERTED';

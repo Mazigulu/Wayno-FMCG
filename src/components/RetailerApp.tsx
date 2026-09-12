@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search, 
   ShoppingBag, 
@@ -29,6 +29,7 @@ import {
   Globe,
   Compass,
   CheckCircle2,
+  Sliders,
   X
 } from 'lucide-react';
 import { 
@@ -49,6 +50,17 @@ import {
 } from '../services/searchEngine';
 import { SearchExecutionResultEnhanced, AutocompleteSuggestion, SearchFilters } from '../types/search';
 import { PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS } from '../data/mockData';
+import { 
+  generateRetailerRecommendations, 
+  DEFAULT_RECOMMENDATION_WEIGHTS 
+} from '../services/recommendationEngine';
+import { 
+  RecommendationExecutionResult, 
+  RecommendedProductItem, 
+  RecommendationEngineWeights 
+} from '../types/recommendation';
+import { RetailerRecommendationTray } from './RetailerRecommendationTray';
+import { RecommendationModelInspector } from './RecommendationModelInspector';
 
 export type RetailerPage = 'catalog' | 'orders' | 'profile';
 
@@ -142,6 +154,40 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
       // ignore
     }
   };
+
+  // 5-Signal Recommendation Engine State (Section 45)
+  const [recommendationResult, setRecommendationResult] = useState<RecommendationExecutionResult | null>(null);
+  const [isModelInspectorOpen, setIsModelInspectorOpen] = useState(false);
+  const [selectedItemForInspect, setSelectedItemForInspect] = useState<RecommendedProductItem | null>(null);
+  const [recommendationWeights, setRecommendationWeights] = useState<RecommendationEngineWeights>(DEFAULT_RECOMMENDATION_WEIGHTS);
+  const [simulatedHour, setSimulatedHour] = useState<number | undefined>(undefined);
+
+  // Compute recommendations reactively
+  useEffect(() => {
+    try {
+      const res = generateRetailerRecommendations(
+        currentShop,
+        recentSearches,
+        activeOrders,
+        recommendationWeights,
+        simulatedHour
+      );
+      setRecommendationResult(res);
+      if (!selectedItemForInspect && res.recommendations.length > 0) {
+        setSelectedItemForInspect(res.recommendations[0]);
+      }
+    } catch (err) {
+      console.error('Failed to generate retailer recommendations:', err);
+    }
+  }, [currentShop, recentSearches, activeOrders, recommendationWeights, simulatedHour]);
+
+  const cartQuantities = useMemo(() => {
+    const map: Record<string, number> = {};
+    cart.forEach((ci) => {
+      map[ci.product.id] = (map[ci.product.id] || 0) + ci.quantity;
+    });
+    return map;
+  }, [cart]);
 
   // Active promotional placements
   const heroPlacements = getPromotionalPlacements().filter(
@@ -495,6 +541,17 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                       {Object.values(searchFilters).filter(Boolean).length}
                     </span>
                   )}
+                </button>
+
+                {/* 5-Signal Recommendation Model Trigger */}
+                <button
+                  onClick={() => setIsModelInspectorOpen(true)}
+                  className="flex items-center space-x-1 text-xs px-2.5 py-1 rounded font-medium border border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-900 transition-colors cursor-pointer"
+                  title="Inspect Section 45: 5-Signal Recommendation Model"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-purple-700" />
+                  <span className="hidden sm:inline">5-Signal Recs</span>
+                  <span className="sm:hidden">Recs</span>
                 </button>
               </div>
             </div>
@@ -879,6 +936,17 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
             )}
           </div>
 
+          {/* Section 45: Multi-Signal Recommendation Tray (Search-First Safeguarded) */}
+          <RetailerRecommendationTray
+            recommendationResult={recommendationResult}
+            currentShop={currentShop}
+            searchQuery={searchQuery}
+            onSelectProductForInspect={(item) => setSelectedItemForInspect(item)}
+            onOpenModelInspector={() => setIsModelInspectorOpen(true)}
+            onAddToCart={addToCart}
+            cartQuantities={cartQuantities}
+          />
+
           {/* Product Results Grid */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -976,7 +1044,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                     promoBadge,
                     promoDiscountKES,
                     placementSlot,
-                    campaignId
+                    appliedCampaignId
                   } = item;
 
                   const qtyInCart = getItemQuantityInCart(product.id);
@@ -1084,9 +1152,9 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           {/* Real-Time Geo-Aware Delivery Zone Corridor */}
                           {item.deliveryZone && (
                             <div className={`text-[10px] font-semibold px-1.5 py-0.5 rounded flex items-center justify-between border ${
-                              item.deliveryZone.zoneId === 'ZONE_1' 
+                              item.deliveryZone.zoneTier === 'LOCAL_CORRIDOR' 
                                 ? 'bg-emerald-50 text-emerald-900 border-emerald-200' 
-                                : item.deliveryZone.zoneId === 'ZONE_2'
+                                : item.deliveryZone.zoneTier === 'SUBCOUNTY_EXPRESS'
                                 ? 'bg-blue-50 text-blue-900 border-blue-200'
                                 : 'bg-slate-100 text-slate-800 border-slate-300'
                             }`}>
@@ -1094,7 +1162,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                                 <Bike className="w-2.5 h-2.5 text-emerald-700" />
                                 <span>{item.deliveryZone.zoneName}</span>
                               </span>
-                              <span>KES {item.deliveryZone.baseDeliveryFeeKES} fee</span>
+                              <span>KES {item.deliveryZone.bodaFareKES} fee</span>
                             </div>
                           )}
 
@@ -1155,7 +1223,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           </div>
                         ) : (
                           <button
-                            onClick={() => handleAdd(product, bestSupplierProduct, campaignId, promoDiscountKES)}
+                            onClick={() => handleAdd(product, bestSupplierProduct, appliedCampaignId, promoDiscountKES)}
                             className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
                               addedAnimationId === product.id
                                 ? 'bg-emerald-600 text-white'
@@ -1508,6 +1576,19 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Recommendation Model Inspector Modal (Section 45) */}
+      {recommendationResult && (
+        <RecommendationModelInspector
+          isOpen={isModelInspectorOpen}
+          onClose={() => setIsModelInspectorOpen(false)}
+          result={recommendationResult}
+          currentShop={currentShop}
+          onSimulateTime={(hour) => setSimulatedHour(hour)}
+          onUpdateWeights={(w) => setRecommendationWeights((prev) => ({ ...prev, ...w }))}
+          onAddToCart={addToCart}
+        />
       )}
     </div>
   );

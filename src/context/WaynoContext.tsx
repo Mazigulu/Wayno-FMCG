@@ -7,16 +7,20 @@ import {
   RetailerShop, 
   Rider, 
   TelemetryEvent, 
-  OrderState 
+  OrderState,
+  PaymentRecord,
+  DeliveryExceptionCode,
+  DeliveryException
 } from '../types/wayno';
 import { INITIAL_SHOPS, INITIAL_RIDERS } from '../data/mockData';
-import { generateEvent } from '../services/orderEngine';
+import { generateEvent, simulateMpesaReversal } from '../services/orderEngine';
 import { recordOrderPromotionalConversions } from '../services/searchEngine';
 
 interface WaynoContextType {
   orders: Order[];
   events: TelemetryEvent[];
   cart: CartItem[];
+  paymentRecords: PaymentRecord[];
   currentShop: RetailerShop;
   allShops: RetailerShop[];
   isCartOpen: boolean;
@@ -36,8 +40,12 @@ interface WaynoContextType {
   setTrackingOrder: (order: Order | null) => void;
   selectShop: (shopId: string) => void;
   handleOrderCreated: (newOrder: Order) => void;
-  handleUpdateOrderStatus: (orderId: string, nextStatus: OrderState, note: string) => void;
+  handleUpdateOrderStatus: (orderId: string, nextStatus: OrderState, note: string, actor?: string) => void;
   handleAssignRider: (orderId: string, rider: Rider) => void;
+  handleReassignRider: (orderId: string, newRider: Rider, reason: string) => void;
+  handleSubstituteOrderItem: (orderId: string, itemIdx: number, newProduct: Product, newSupplierProduct: SupplierProduct, reason: string) => void;
+  handleCaptureDeliveryException: (orderId: string, code: DeliveryExceptionCode, reason: string, rider: Rider) => void;
+  handleInitiateRefund: (orderId: string, amountKES: number, reason: string) => Promise<boolean>;
   logEvent: (type: any, metadata?: Record<string, any>) => void;
 }
 
@@ -158,6 +166,66 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     generateEvent('PAYMENT_COMPLETED', 'ret_01', 'shop_01', { orderId: 'WN-892410', provider: 'M-Pesa' }),
   ]);
 
+  // Authoritative Payment & Settlement Ledger Records
+  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>([
+    {
+      id: 'pay_rec_01',
+      orderId: 'WN-892410',
+      provider: 'M-Pesa',
+      providerReference: 'QG48291048KE',
+      idempotencyKey: 'mpesa_idemp_WN-892410_171000',
+      phoneNumber: '254712345678',
+      amount: 4530,
+      currency: 'KES',
+      status: 'SUCCESS',
+      reconciliationState: 'MATCHED',
+      initiatedAt: new Date(Date.now() - 3550000).toISOString(),
+      completedAt: new Date(Date.now() - 3500000).toISOString(),
+    },
+    {
+      id: 'pay_rec_02',
+      orderId: 'WN-741920',
+      provider: 'M-Pesa',
+      providerReference: 'QG91827361KE',
+      idempotencyKey: 'mpesa_idemp_WN-741920_172000',
+      phoneNumber: '254722998877',
+      amount: 8110,
+      currency: 'KES',
+      status: 'SUCCESS',
+      reconciliationState: 'MATCHED',
+      initiatedAt: new Date(Date.now() - 1750000).toISOString(),
+      completedAt: new Date(Date.now() - 1700000).toISOString(),
+    },
+    {
+      id: 'pay_rec_03',
+      orderId: 'WN-382911',
+      provider: 'M-Pesa',
+      providerReference: 'QG77419024KE',
+      idempotencyKey: 'mpesa_idemp_WN-382911_prev',
+      phoneNumber: '254733112233',
+      amount: 3200,
+      currency: 'KES',
+      status: 'SUCCESS',
+      reconciliationState: 'DUPLICATE_CALLBACK_PREVENTED',
+      initiatedAt: new Date(Date.now() - 7200000).toISOString(),
+      completedAt: new Date(Date.now() - 7180000).toISOString(),
+    },
+    {
+      id: 'pay_rec_04',
+      orderId: 'WN-119284',
+      provider: 'M-Pesa',
+      providerReference: 'QG10294857KE',
+      idempotencyKey: 'mpesa_idemp_WN-119284_prev',
+      phoneNumber: '254799001122',
+      amount: 1450,
+      currency: 'KES',
+      status: 'REVERSED',
+      reconciliationState: 'REFUNDED',
+      initiatedAt: new Date(Date.now() - 14400000).toISOString(),
+      completedAt: new Date(Date.now() - 14350000).toISOString(),
+    }
+  ]);
+
   const logEvent = (type: any, metadata: Record<string, any> = {}) => {
     const newEvt = generateEvent(type, currentShop.retailerId, currentShop.id, metadata);
     setEvents((prev) => [newEvt, ...prev]);
@@ -258,7 +326,7 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const handleUpdateOrderStatus = (orderId: string, nextStatus: OrderState, note: string) => {
+  const handleUpdateOrderStatus = (orderId: string, nextStatus: OrderState, note: string, actor?: string) => {
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id === orderId) {
@@ -267,7 +335,12 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             status: nextStatus,
             stateHistory: [
               ...o.stateHistory,
-              { state: nextStatus, timestamp: new Date().toISOString(), note },
+              { 
+                state: nextStatus, 
+                timestamp: new Date().toISOString(), 
+                note,
+                actor: actor || 'SYSTEM' 
+              },
             ],
             updatedAt: new Date().toISOString(),
           };
@@ -276,9 +349,10 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    if (nextStatus === 'SUPPLIER_CONFIRMED') logEvent('SUPPLIER_ACCEPTED', { orderId, note });
+    if (nextStatus === 'SUPPLIER_CONFIRMED' || nextStatus === 'ACCEPTED') logEvent('SUPPLIER_ACCEPTED', { orderId, note, actor });
     if (nextStatus === 'PICKED_UP') logEvent('ORDER_PICKED_UP', { orderId, note });
     if (nextStatus === 'DELIVERED') logEvent('ORDER_DELIVERED', { orderId, note });
+    if (nextStatus === 'FAILED') logEvent('ORDER_DELIVERY_FAILED', { orderId, note });
   };
 
   const handleAssignRider = (orderId: string, rider: Rider) => {
@@ -297,6 +371,7 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 state: 'RIDER_ASSIGNED',
                 timestamp: new Date().toISOString(),
                 note: `Assigned rider ${rider.name} (${rider.vehiclePlate})`,
+                actor: 'RIDER_DISPATCH',
               },
             ],
             updatedAt: new Date().toISOString(),
@@ -308,12 +383,189 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     logEvent('RIDER_ASSIGNED', { orderId, riderId: rider.id, riderName: rider.name });
   };
 
+  const handleReassignRider = (orderId: string, newRider: Rider, reason: string) => {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === orderId) {
+          const prevRider = o.riderName || 'None';
+          return {
+            ...o,
+            riderId: newRider.id,
+            riderName: newRider.name,
+            riderPhone: newRider.phone,
+            status: 'RIDER_ASSIGNED',
+            stateHistory: [
+              ...o.stateHistory,
+              {
+                state: 'RIDER_ASSIGNED',
+                timestamp: new Date().toISOString(),
+                note: `Rider reassigned by Operations from [${prevRider}] to [${newRider.name} (${newRider.vehiclePlate})]. Reason: ${reason}`,
+                actor: 'OPERATIONS_ADMIN',
+              },
+            ],
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return o;
+      })
+    );
+    logEvent('RIDER_REASSIGNED', { orderId, newRiderId: newRider.id, newRiderName: newRider.name, reason });
+  };
+
+  const handleSubstituteOrderItem = (
+    orderId: string,
+    itemIdx: number,
+    newProduct: Product,
+    newSupplierProduct: SupplierProduct,
+    reason: string
+  ) => {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === orderId) {
+          const updatedItems = [...o.items];
+          const targetItem = updatedItems[itemIdx];
+          if (!targetItem) return o;
+
+          const oldSubtotal = o.subtotal;
+          const newUnitPrice = newSupplierProduct.price;
+          const newTotalPrice = newUnitPrice * targetItem.quantity;
+          
+          updatedItems[itemIdx] = {
+            ...targetItem,
+            productId: newProduct.id,
+            productName: newProduct.name,
+            packSize: newProduct.packSize,
+            unitPrice: newUnitPrice,
+            totalPrice: newTotalPrice,
+            wholesalerLocationId: newSupplierProduct.supplierId,
+            isSubstituted: true,
+            originalProductId: targetItem.productId,
+            originalProductName: targetItem.productName,
+            substitutionReason: reason,
+          };
+
+          const newSubtotal = updatedItems.reduce((acc, it) => acc + it.totalPrice, 0);
+          const priceDiff = newSubtotal - oldSubtotal;
+          const newTotalAmount = newSubtotal + o.deliveryFee;
+
+          return {
+            ...o,
+            items: updatedItems,
+            subtotal: newSubtotal,
+            totalAmount: newTotalAmount,
+            status: 'PARTIALLY_FULFILLED',
+            stateHistory: [
+              ...o.stateHistory,
+              {
+                state: 'PARTIALLY_FULFILLED',
+                timestamp: new Date().toISOString(),
+                note: `Wholesaler substitution: "${targetItem.productName}" replaced with "${newProduct.name}". Price delta: KES ${priceDiff}. Reason: ${reason}`,
+                actor: 'WHOLESALER',
+              },
+            ],
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return o;
+      })
+    );
+
+    logEvent('ORDER_ITEM_SUBSTITUTED', { orderId, itemIdx, substituteProduct: newProduct.name, reason });
+  };
+
+  const handleCaptureDeliveryException = (
+    orderId: string,
+    code: DeliveryExceptionCode,
+    reason: string,
+    rider: Rider
+  ) => {
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === orderId) {
+          return {
+            ...o,
+            status: 'FAILED',
+            deliveryException: {
+              code,
+              reason,
+              timestamp: new Date().toISOString(),
+              reportedByRiderId: rider.id,
+              reportedByRiderName: rider.name,
+              resolved: false,
+            },
+            stateHistory: [
+              ...o.stateHistory,
+              {
+                state: 'FAILED',
+                timestamp: new Date().toISOString(),
+                note: `Delivery Exception reported by rider ${rider.name}: [${code}] ${reason}`,
+                actor: 'RIDER',
+              },
+            ],
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return o;
+      })
+    );
+
+    logEvent('DELIVERY_EXCEPTION_RECORDED', { orderId, code, reason, riderId: rider.id });
+  };
+
+  const handleInitiateRefund = async (orderId: string, amountKES: number, reason: string): Promise<boolean> => {
+    const targetOrder = orders.find((o) => o.id === orderId);
+    if (!targetOrder) return false;
+
+    // Transition to REFUND_PENDING
+    handleUpdateOrderStatus(orderId, 'REFUND_PENDING', `Initiating M-Pesa B2C refund of KES ${amountKES}. Reason: ${reason}`, 'FINANCE_ENGINE');
+
+    const result = await simulateMpesaReversal(targetOrder, amountKES, reason);
+    if (result.success) {
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id === orderId) {
+            return {
+              ...o,
+              status: 'REFUNDED',
+              reconciliationStatus: 'REVERSED',
+              refundRecord: {
+                refundId: result.paymentRecord.id,
+                amount: amountKES,
+                reason,
+                initiatedAt: result.paymentRecord.initiatedAt,
+                completedAt: result.paymentRecord.completedAt,
+                mpesaReversalRef: result.reversalRef,
+                status: 'COMPLETED',
+              },
+              stateHistory: [
+                ...o.stateHistory,
+                {
+                  state: 'REFUNDED',
+                  timestamp: new Date().toISOString(),
+                  note: `M-Pesa reversal completed under reference ${result.reversalRef}. Amount: KES ${amountKES}.`,
+                  actor: 'M-PESA_B2C_GATEWAY',
+                },
+              ],
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return o;
+        })
+      );
+
+      setPaymentRecords((prev) => [result.paymentRecord, ...prev]);
+      logEvent('PAYMENT_REVERSED', { orderId, reversalRef: result.reversalRef, amountKES });
+      return true;
+    }
+    return false;
+  };
+
   const selectShop = (shopId: string) => {
     const found = INITIAL_SHOPS.find((s) => s.id === shopId);
     if (found) setCurrentShop(found);
   };
 
-  const activeOrdersCount = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED').length;
+  const activeOrdersCount = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED').length;
   const cartCount = cart.reduce((acc, i) => acc + i.quantity, 0);
 
   return (
@@ -322,6 +574,7 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         orders,
         events,
         cart,
+        paymentRecords,
         currentShop,
         allShops: INITIAL_SHOPS,
         isCartOpen,
@@ -338,6 +591,10 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         handleOrderCreated,
         handleUpdateOrderStatus,
         handleAssignRider,
+        handleReassignRider,
+        handleSubstituteOrderItem,
+        handleCaptureDeliveryException,
+        handleInitiateRefund,
         logEvent,
       }}
     >

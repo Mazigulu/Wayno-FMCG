@@ -18,46 +18,104 @@ import {
   MapPin,
   ShieldCheck,
   Zap,
-  Filter
+  Filter,
+  DollarSign,
+  Bike,
+  Check,
+  Store,
+  Building2,
+  Package,
+  Truck,
+  AlertOctagon
 } from 'lucide-react';
-import { Order, TelemetryEvent, OrderState } from '../types/wayno';
+import { Order, TelemetryEvent, OrderState, Rider, PaymentRecord } from '../types/wayno';
+import { INITIAL_RIDERS, PRODUCTS, INITIAL_SHOPS, WHOLESALERS } from '../data/mockData';
+import { RetailersManager } from './operations/RetailersManager';
+import { WholesalersManager } from './operations/WholesalersManager';
+import { RidersFleetManager } from './operations/RidersFleetManager';
+import { ProductsMasterCatalog } from './operations/ProductsMasterCatalog';
+import { DeliveriesDispatchRadar } from './operations/DeliveriesDispatchRadar';
+import { IssuesIncidentDesk } from './operations/IssuesIncidentDesk';
+import { SearchAnalyticsDesk } from './operations/SearchAnalyticsDesk';
 
-export type OperationsPage = 'pipeline' | 'telemetry' | 'kpis';
+export type OperationsPage = 
+  | 'orders' 
+  | 'retailers' 
+  | 'wholesalers' 
+  | 'riders' 
+  | 'products' 
+  | 'payments' 
+  | 'deliveries' 
+  | 'issues' 
+  | 'search_analytics' 
+  | 'telemetry' 
+  | 'pipeline' 
+  | 'reconciliation' 
+  | 'kpis';
 
 interface OperationsConsoleProps {
   orders: Order[];
   events: TelemetryEvent[];
+  paymentRecords?: PaymentRecord[];
   onManualOverrideStatus: (orderId: string, newState: OrderState, note: string) => void;
+  onReassignRider?: (orderId: string, newRider: Rider, reason: string) => void;
+  onInitiateRefund?: (orderId: string, reason: string) => void;
+  initialPage?: OperationsPage;
 }
 
 export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
   orders,
   events,
+  paymentRecords = [],
   onManualOverrideStatus,
+  onReassignRider,
+  onInitiateRefund,
+  initialPage,
 }) => {
-  const [currentPage, setCurrentPage] = useState<OperationsPage>('pipeline');
+  const [currentPage, setCurrentPage] = useState<OperationsPage>(initialPage || 'orders');
+
+  React.useEffect(() => {
+    if (initialPage) {
+      setCurrentPage(initialPage);
+    }
+  }, [initialPage]);
   const [filterPartition, setFilterPartition] = useState<string>('ALL');
   const [selectedOrderForOverride, setSelectedOrderForOverride] = useState<Order | null>(null);
   const [overrideStateInput, setOverrideStateInput] = useState<OrderState>('READY_FOR_PICKUP');
   const [overrideNote, setOverrideNote] = useState('');
   const [orderStateFilter, setOrderStateFilter] = useState<string>('ALL');
 
+  // Reassign Rider Modal State (FR-OPS-003)
+  const [selectedOrderForReassign, setSelectedOrderForReassign] = useState<Order | null>(null);
+  const [selectedRiderId, setSelectedRiderId] = useState<string>(INITIAL_RIDERS[0].id);
+  const [reassignReason, setReassignReason] = useState('Previous rider had flat tire / unresponsive');
+
+  // Manual Refund / Reversal Modal State (FR-OPS-004 / FR-FIN-008)
+  const [selectedOrderForRefund, setSelectedOrderForRefund] = useState<Order | null>(null);
+  const [refundReason, setRefundReason] = useState('Delivery failed - goods returned to depot; full reversal authorized');
+
   const totalGMV = orders.reduce((acc, o) => acc + o.totalAmount, 0) + 184500;
   const completedOrders = orders.filter((o) => o.status === 'DELIVERED').length + 42;
-  const activePipelines = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED').length;
+  const activePipelines = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'FAILED' && o.status !== 'REFUNDED').length;
 
   const ALL_STATES: OrderState[] = [
     'CREATED',
     'PAYMENT_PENDING',
     'PAID',
     'FULFILLMENT_PENDING',
+    'SUPPLIER_PENDING',
+    'ACCEPTED',
     'SUPPLIER_CONFIRMED',
+    'PREPARING',
     'READY_FOR_PICKUP',
+    'PARTIALLY_FULFILLED',
     'RIDER_ASSIGNED',
     'PICKED_UP',
     'OUT_FOR_DELIVERY',
     'DELIVERED',
+    'FAILED',
     'CANCELLED',
+    'REFUNDED',
   ];
 
   const handleApplyOverride = () => {
@@ -122,60 +180,184 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
           </div>
         </div>
 
-        {/* Outlook Secondary Page Tabs Ribbon */}
-        <div className="flex items-center space-x-1 pt-2.5 overflow-x-auto text-xs">
+        {/* Operations Core 9 Modules Ribbon */}
+        <div className="flex items-center space-x-1 pt-2.5 overflow-x-auto text-xs pb-1">
           <button
-            onClick={() => setCurrentPage('pipeline')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap ${
-              currentPage === 'pipeline'
+            onClick={() => setCurrentPage('orders')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'orders' || currentPage === 'pipeline'
                 ? 'bg-slate-900 text-white font-semibold'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
-            <span>Order Pipeline & State Override</span>
+            <span>Orders</span>
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              currentPage === 'pipeline' ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'
+              currentPage === 'orders' || currentPage === 'pipeline' ? 'bg-white text-slate-900' : 'bg-slate-900 text-white'
             }`}>
               {activePipelines}
             </span>
           </button>
 
           <button
+            onClick={() => setCurrentPage('retailers')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'retailers'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Store className="w-3.5 h-3.5" />
+            <span>Retailers</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'retailers' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {INITIAL_SHOPS.length} Dukas
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('wholesalers')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'wholesalers'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Wholesalers</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'wholesalers' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {WHOLESALERS.length} Hubs
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('riders')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'riders'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Bike className="w-3.5 h-3.5" />
+            <span>Riders</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'riders' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {INITIAL_RIDERS.length} Fleet
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('products')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'products'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>Products</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'products' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
+            }`}>
+              {PRODUCTS.length} SKUs
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('payments')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'payments' || currentPage === 'reconciliation'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Payments</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'payments' || currentPage === 'reconciliation' ? 'bg-white text-slate-900' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              {paymentRecords.length || orders.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('deliveries')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'deliveries' || currentPage === 'kpis'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Truck className="w-3.5 h-3.5" />
+            <span>Deliveries</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'deliveries' || currentPage === 'kpis' ? 'bg-white text-slate-900' : 'bg-indigo-100 text-indigo-800'
+            }`}>
+              Radar
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('issues')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'issues'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <AlertOctagon className="w-3.5 h-3.5 text-rose-500" />
+            <span>Issues</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'issues' ? 'bg-white text-slate-900' : 'bg-rose-100 text-rose-800'
+            }`}>
+              {orders.filter(o => o.deliveryException || o.status === 'FAILED' || o.status === 'CANCELLED' || o.status === 'REFUNDED').length || 3}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setCurrentPage('search_analytics')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              currentPage === 'search_analytics'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Search Analytics</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              currentPage === 'search_analytics' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
+            }`}>
+              38ms
+            </span>
+          </button>
+
+          <button
             onClick={() => setCurrentPage('telemetry')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap ${
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
               currentPage === 'telemetry'
                 ? 'bg-slate-900 text-white font-semibold'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
-            <span>S3 Parquet Data Lake Telemetry</span>
+            <span>Data Lake</span>
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
               currentPage === 'telemetry' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
             }`}>
               {events.length}
             </span>
           </button>
-
-          <button
-            onClick={() => setCurrentPage('kpis')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap ${
-              currentPage === 'kpis'
-                ? 'bg-slate-900 text-white font-semibold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>Network KPIs & SLA Velocity</span>
-          </button>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* PAGE 1: ORDER PIPELINE & STATE OVERRIDE                                   */}
+      {/* MODULE 1: ORDERS (PIPELINE & STATE OVERRIDE)                              */}
       {/* ========================================================================= */}
-      {currentPage === 'pipeline' && (
+      {(currentPage === 'orders' || currentPage === 'pipeline') && (
         <div className="space-y-4">
           {/* Quick Metrics Bar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -271,27 +453,75 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
                       KES {order.totalAmount.toLocaleString()}
                     </td>
                     <td className="py-2.5 px-3.5">
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase border ${
-                        order.status === 'DELIVERED'
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : 'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}>
-                        {order.status.replace(/_/g, ' ')}
-                      </span>
+                      <div className="space-y-0.5">
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase border inline-block ${
+                          order.status === 'DELIVERED'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : order.status === 'FAILED'
+                            ? 'bg-rose-50 text-rose-800 border-rose-200'
+                            : order.status === 'REFUNDED'
+                            ? 'bg-purple-50 text-purple-800 border-purple-200'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {order.status.replace(/_/g, ' ')}
+                        </span>
+                        {order.deliveryException && (
+                          <span className="text-[10px] text-rose-700 font-semibold block">
+                            ⚠️ Exception: {order.deliveryException.code}
+                          </span>
+                        )}
+                        {order.refundRecord && (
+                          <span className="text-[10px] text-emerald-700 font-semibold block">
+                            ✓ Reversal: {order.refundRecord.reversalTransactionId}
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-2.5 px-3.5 text-slate-500">
-                      {order.riderName || 'None assigned'}
+                    <td className="py-2.5 px-3.5 text-slate-600">
+                      {order.riderName ? (
+                        <div className="flex items-center space-x-1 font-medium">
+                          <Bike className="w-3 h-3 text-slate-400" />
+                          <span>{order.riderName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 italic">None assigned</span>
+                      )}
                     </td>
                     <td className="py-2.5 px-3.5 text-right">
-                      <button
-                        onClick={() => {
-                          setSelectedOrderForOverride(order);
-                          setOverrideStateInput(order.status);
-                        }}
-                        className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs px-2.5 py-1 rounded font-medium transition-colors cursor-pointer"
-                      >
-                        Override State
-                      </button>
+                      <div className="flex items-center justify-end space-x-1.5">
+                        {['READY_FOR_PICKUP', 'RIDER_ASSIGNED', 'PICKED_UP', 'FAILED'].includes(order.status) && onReassignRider && (
+                          <button
+                            onClick={() => {
+                              setSelectedOrderForReassign(order);
+                              setSelectedRiderId(INITIAL_RIDERS[0].id);
+                            }}
+                            className="bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs px-2 py-1 rounded font-medium transition-colors cursor-pointer"
+                            title="Reassign another rider (FR-OPS-003)"
+                          >
+                            Reassign Rider
+                          </button>
+                        )}
+
+                        {['FAILED', 'CANCELLED'].includes(order.status) && !order.refundRecord && onInitiateRefund && (
+                          <button
+                            onClick={() => setSelectedOrderForRefund(order)}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs px-2 py-1 rounded font-semibold transition-colors cursor-pointer"
+                            title="Initiate M-Pesa refund reversal (FR-OPS-004)"
+                          >
+                            Initiate Refund
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            setSelectedOrderForOverride(order);
+                            setOverrideStateInput(order.status);
+                          }}
+                          className="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs px-2.5 py-1 rounded font-medium transition-colors cursor-pointer"
+                        >
+                          Override State
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -352,6 +582,119 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
                 className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
               >
                 Commit State
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reassign Rider Modal (FR-OPS-003) */}
+      {selectedOrderForReassign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 animate-in fade-in">
+          <div className="bg-white border border-slate-300 rounded-md w-full max-w-md p-5 text-slate-900 space-y-4 shadow-xl">
+            <div className="flex items-center space-x-2">
+              <Bike className="w-5 h-5 text-slate-800" />
+              <div>
+                <h4 className="font-bold text-sm text-slate-900">Operational Rider Reassignment</h4>
+                <p className="text-[11px] text-slate-500">Order #{selectedOrderForReassign.id} · Current: {selectedOrderForReassign.riderName || 'Unassigned'}</p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-700 block">Select Available Rider:</label>
+              <select
+                value={selectedRiderId}
+                onChange={(e) => setSelectedRiderId(e.target.value)}
+                className="w-full bg-white border border-slate-300 text-slate-900 rounded px-2.5 py-1.5 text-xs font-medium focus:border-slate-800 focus:outline-none cursor-pointer"
+              >
+                {INITIAL_RIDERS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} ({r.vehicleType}, {r.plateNumber}) - {r.phone}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-700 block">Reassignment Reason / Audit Trail:</label>
+              <input
+                type="text"
+                value={reassignReason}
+                onChange={(e) => setReassignReason(e.target.value)}
+                className="w-full bg-white border border-slate-300 text-slate-900 rounded px-2.5 py-1.5 text-xs focus:border-slate-800 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setSelectedOrderForReassign(null)}
+                className="text-xs text-slate-600 hover:text-slate-900 font-medium px-3 py-1.5 rounded cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const targetRider = INITIAL_RIDERS.find(r => r.id === selectedRiderId) || INITIAL_RIDERS[0];
+                  if (onReassignRider) {
+                    onReassignRider(selectedOrderForReassign.id, targetRider, reassignReason);
+                  }
+                  setSelectedOrderForReassign(null);
+                }}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Confirm Reassignment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Refund Modal (FR-OPS-004 / FR-FIN-008) */}
+      {selectedOrderForRefund && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 animate-in fade-in">
+          <div className="bg-white border border-slate-300 rounded-md w-full max-w-md p-5 text-slate-900 space-y-4 shadow-xl">
+            <div className="flex items-center space-x-2 text-rose-700">
+              <DollarSign className="w-5 h-5" />
+              <div>
+                <h4 className="font-bold text-sm text-slate-900">Initiate M-Pesa Reversal / Refund</h4>
+                <p className="text-[11px] text-slate-500">Order #{selectedOrderForRefund.id} · Amount: KES {selectedOrderForRefund.totalAmount.toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded p-2.5 text-xs text-amber-900 space-y-1">
+              <div className="font-semibold">⚠️ Direct Safaricom Daraja B2C Reversal</div>
+              <p className="text-[11px]">
+                Triggering this will issue a reversal of KES {selectedOrderForRefund.totalAmount.toLocaleString()} directly to customer MSISDN ({selectedOrderForRefund.shopOwnerPhone}) and update state to REFUNDED.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-slate-700 block">Reversal Reason / Ledger Code:</label>
+              <input
+                type="text"
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                className="w-full bg-white border border-slate-300 text-slate-900 rounded px-2.5 py-1.5 text-xs focus:border-slate-800 focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setSelectedOrderForRefund(null)}
+                className="text-xs text-slate-600 hover:text-slate-900 font-medium px-3 py-1.5 rounded cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (onInitiateRefund) {
+                    onInitiateRefund(selectedOrderForRefund.id, refundReason);
+                  }
+                  setSelectedOrderForRefund(null);
+                }}
+                className="bg-rose-700 hover:bg-rose-800 text-white px-3.5 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Execute Reversal (KES {selectedOrderForRefund.totalAmount.toLocaleString()})
               </button>
             </div>
           </div>
@@ -516,6 +859,203 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 6: M-PESA PAYMENTS & FINANCIAL LEDGER (FR-FIN-001 - 008)           */}
+      {/* ========================================================================= */}
+      {(currentPage === 'payments' || currentPage === 'reconciliation') && (
+        <div className="space-y-4">
+          {/* Financial KPI Ribbon */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+              <span className="text-[10px] text-slate-400 block font-medium uppercase">M-Pesa Captured Volume</span>
+              <span className="text-base font-bold text-emerald-800 font-mono">
+                KES {(totalGMV).toLocaleString()}
+              </span>
+              <span className="text-[10px] text-slate-500 block">Paybill 889100 Verified</span>
+            </div>
+
+            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+              <span className="text-[10px] text-slate-400 block font-medium uppercase">STK Callback SLA</span>
+              <span className="text-base font-bold text-slate-900 font-mono">
+                1.4s p95
+              </span>
+              <span className="text-[10px] text-emerald-700 block font-medium">Zero timeout drops</span>
+            </div>
+
+            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+              <span className="text-[10px] text-slate-400 block font-medium uppercase">Ledger Reconciliation</span>
+              <span className="text-base font-bold text-slate-900 font-mono">
+                100%
+              </span>
+              <span className="text-[10px] text-slate-500 block">Automated bank matching</span>
+            </div>
+
+            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+              <span className="text-[10px] text-slate-400 block font-medium uppercase">Total Reversals / Refunds</span>
+              <span className="text-base font-bold text-rose-800 font-mono">
+                {orders.filter(o => o.refundRecord || o.status === 'REFUNDED').length} Orders
+              </span>
+              <span className="text-[10px] text-rose-700 block font-medium">B2C API Reversals</span>
+            </div>
+          </div>
+
+          {/* Daraja Callback Stream & Reconciliation Table */}
+          <div className="bg-white border border-slate-200 rounded-md p-4 space-y-3 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-2">
+                  <DollarSign className="w-4 h-4 text-emerald-600" />
+                  <span>Safaricom Daraja STK Push & Webhook Reconciliation Log</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">
+                  Real-time synchronization between Safaricom Daraja API callbacks and internal WAYNO order ledger (FR-FIN-001 to FR-FIN-008).
+                </p>
+              </div>
+
+              <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-semibold self-start sm:self-auto">
+                Webhook Sync: Active (TLS 1.3)
+              </span>
+            </div>
+
+            <div className="border border-slate-200 rounded overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-900">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                  <tr>
+                    <th className="py-2.5 px-3">Order Ref</th>
+                    <th className="py-2.5 px-3">Retail Duka</th>
+                    <th className="py-2.5 px-3">MSISDN</th>
+                    <th className="py-2.5 px-3">Amount</th>
+                    <th className="py-2.5 px-3">Daraja Status</th>
+                    <th className="py-2.5 px-3">Reconciliation</th>
+                    <th className="py-2.5 px-3 text-right">Audit / Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {orders.map((order) => {
+                    const isRefunded = order.status === 'REFUNDED' || !!order.refundRecord;
+                    const isPaid = order.status !== 'CREATED' && order.status !== 'PAYMENT_PENDING';
+                    const darajaCode = isRefunded ? 'REV-992' : isPaid ? '0 (Success)' : 'PENDING';
+
+                    return (
+                      <tr key={order.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          {order.id}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="font-semibold text-slate-900 block">{order.shopName}</span>
+                          <span className="text-[10px] text-slate-400">{order.wholesalerName}</span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          {order.shopOwnerPhone}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
+                          KES {order.totalAmount.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${
+                            isRefunded
+                              ? 'bg-purple-50 text-purple-800 border-purple-200'
+                              : isPaid
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}>
+                            {darajaCode}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase ${
+                            isRefunded
+                              ? 'bg-purple-100 text-purple-900'
+                              : isPaid
+                              ? 'bg-emerald-100 text-emerald-900'
+                              : 'bg-slate-100 text-slate-700'
+                          }`}>
+                            {isRefunded ? 'REVERSED' : isPaid ? 'MATCHED' : 'UNPAID'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          {isPaid && !isRefunded && onInitiateRefund && (
+                            <button
+                              onClick={() => setSelectedOrderForRefund(order)}
+                              className="text-[10px] font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded transition-colors cursor-pointer"
+                            >
+                              Refund
+                            </button>
+                          )}
+                          {isRefunded && (
+                            <span className="text-[10px] font-mono text-slate-500">
+                              {order.refundRecord?.reversalTransactionId || 'REVERSED'}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 2: RETAILERS (SHOP DIRECTORY & CREDIT FACILITIES)                  */}
+      {/* ========================================================================= */}
+      {currentPage === 'retailers' && (
+        <RetailersManager orders={orders} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 3: WHOLESALERS (DEPOT HUBS & SLA MONITORING)                       */}
+      {/* ========================================================================= */}
+      {currentPage === 'wholesalers' && (
+        <WholesalersManager orders={orders} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 4: RIDERS (FLEET MANAGEMENT & LIVE GPS COMMAND)                    */}
+      {/* ========================================================================= */}
+      {currentPage === 'riders' && (
+        <RidersFleetManager orders={orders} onReassignRider={onReassignRider} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 5: PRODUCTS (MASTER FMCG CATALOG & PRICE FEEDS)                    */}
+      {/* ========================================================================= */}
+      {currentPage === 'products' && (
+        <ProductsMasterCatalog />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 7: DELIVERIES (DISPATCH RADAR & CORRIDOR VELOCITY)                 */}
+      {/* ========================================================================= */}
+      {currentPage === 'deliveries' && (
+        <DeliveriesDispatchRadar 
+          orders={orders} 
+          onManualOverrideStatus={onManualOverrideStatus}
+          onReassignRider={onReassignRider}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 8: ISSUES (INCIDENT DESK & EXCEPTION MANAGEMENT)                   */}
+      {/* ========================================================================= */}
+      {currentPage === 'issues' && (
+        <IssuesIncidentDesk 
+          orders={orders} 
+          onInitiateRefund={onInitiateRefund}
+          onReassignRider={onReassignRider}
+          onManualOverrideStatus={onManualOverrideStatus}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* MODULE 9: SEARCH ANALYTICS (TOP QUERIES, CTR & ZERO-RESULT STOCKOUTS)    */}
+      {/* ========================================================================= */}
+      {currentPage === 'search_analytics' && (
+        <SearchAnalyticsDesk events={events} />
       )}
     </div>
   );

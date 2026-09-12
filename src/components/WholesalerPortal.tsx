@@ -29,11 +29,19 @@ export type WholesalerPage = 'dispatch' | 'inventory' | 'analytics';
 interface WholesalerPortalProps {
   orders: Order[];
   onUpdateOrderStatus: (orderId: string, nextStatus: any, note: string) => void;
+  onSubstituteOrderItem?: (
+    orderId: string,
+    itemIdx: number,
+    newProduct: Product,
+    newSupplierProduct: SupplierProduct,
+    reason: string
+  ) => void;
 }
 
 export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
   orders,
   onUpdateOrderStatus,
+  onSubstituteOrderItem,
 }) => {
   const [currentPage, setCurrentPage] = useState<WholesalerPage>('dispatch');
   const [selectedWholesalerId, setSelectedWholesalerId] = useState<string>(WHOLESALERS[0].id);
@@ -42,6 +50,11 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
   const [priceInput, setPriceInput] = useState<number>(0);
   const [inventorySearch, setInventorySearch] = useState('');
   const [dispatchFilter, setDispatchFilter] = useState<'ALL' | 'PENDING' | 'STAGED' | 'DISPATCHED'>('ALL');
+  
+  // Line-Item Substitution Modal State (FR-WHS-006)
+  const [substitutionTarget, setSubstitutionTarget] = useState<{ order: Order; itemIdx: number } | null>(null);
+  const [selectedSubstituteId, setSelectedSubstituteId] = useState<string>('');
+  const [substitutionReasonText, setSubstitutionReasonText] = useState('Stockout of original brand; replaced with equivalent grade');
 
   const currentWholesaler = WHOLESALERS.find((w) => w.id === selectedWholesalerId) || WHOLESALERS[0];
 
@@ -286,18 +299,54 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
                     </div>
 
                     {/* Items to Pack */}
-                    <div className="bg-slate-50 border border-slate-200 rounded p-2.5 space-y-1 text-xs">
-                      <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">
-                        Packs to Pick from Shelves:
-                      </span>
+                    <div className="bg-slate-50 border border-slate-200 rounded p-2.5 space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-slate-400 font-semibold block uppercase tracking-wider">
+                          Packs to Pick from Shelves:
+                        </span>
+                        {['PAID', 'FULFILLMENT_PENDING', 'SUPPLIER_PENDING', 'ACCEPTED', 'SUPPLIER_CONFIRMED', 'PREPARING', 'PARTIALLY_FULFILLED'].includes(order.status) && (
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Stockout? Click item to substitute
+                          </span>
+                        )}
+                      </div>
                       {order.items.map((it, idx) => (
-                        <div key={idx} className="flex items-center justify-between">
-                          <span className="text-slate-800 font-medium">
-                            {it.quantity}x {it.productName} ({it.packSize})
-                          </span>
-                          <span className="font-mono text-slate-500 text-[11px]">
-                            KES {it.totalPrice.toLocaleString()}
-                          </span>
+                        <div key={idx} className="p-1.5 rounded bg-white border border-slate-200/80 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="text-slate-800 font-medium">
+                                {it.quantity}x {it.productName}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-mono">({it.packSize})</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-mono text-slate-700 text-[11px] font-semibold">
+                                KES {it.totalPrice.toLocaleString()}
+                              </span>
+                              {['PAID', 'FULFILLMENT_PENDING', 'SUPPLIER_PENDING', 'ACCEPTED', 'SUPPLIER_CONFIRMED', 'PREPARING', 'PARTIALLY_FULFILLED'].includes(order.status) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSubstitutionTarget({ order, itemIdx: idx });
+                                    const candidate = PRODUCTS.find((p) => p.id !== it.productId);
+                                    if (candidate) setSelectedSubstituteId(candidate.id);
+                                  }}
+                                  className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded border border-slate-300 font-medium transition-colors"
+                                  title="Replace with in-stock alternative (FR-WHS-006)"
+                                >
+                                  Substitute
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {it.isSubstituted && (
+                            <div className="text-[10px] bg-amber-50 text-amber-900 border border-amber-200 rounded px-2 py-0.5 flex items-center justify-between">
+                              <span>
+                                <strong>Substituted:</strong> Replaced "{it.originalProductName}"
+                              </span>
+                              <span className="italic text-amber-800">{it.substitutionReason}</span>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -320,44 +369,62 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
                       </span>
                     </div>
 
-                    {['PAID', 'FULFILLMENT_PENDING'].includes(order.status) && (
-                      <button
-                        onClick={() =>
-                          onUpdateOrderStatus(
-                            order.id,
-                            'SUPPLIER_CONFIRMED',
-                            'Wholesaler accepted order and started picking from shelves'
-                          )
-                        }
-                        className="flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
-                      >
-                        <Check className="w-3 h-3" />
-                        <span>Confirm & Pack</span>
-                      </button>
-                    )}
+                    <div className="flex items-center space-x-2">
+                      {['PAID', 'FULFILLMENT_PENDING', 'SUPPLIER_PENDING'].includes(order.status) && (
+                        <button
+                          onClick={() =>
+                            onUpdateOrderStatus(
+                              order.id,
+                              'ACCEPTED',
+                              'Wholesaler accepted order and locked inventory'
+                            )
+                          }
+                          className="flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          <Check className="w-3 h-3" />
+                          <span>Accept Order</span>
+                        </button>
+                      )}
 
-                    {order.status === 'SUPPLIER_CONFIRMED' && (
-                      <button
-                        onClick={() =>
-                          onUpdateOrderStatus(
-                            order.id,
-                            'READY_FOR_PICKUP',
-                            'Order packaged, labeled, and placed in staging bay'
-                          )
-                        }
-                        className="flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
-                      >
-                        <Package className="w-3 h-3" />
-                        <span>Ready for Rider</span>
-                      </button>
-                    )}
+                      {['ACCEPTED', 'SUPPLIER_CONFIRMED', 'PARTIALLY_FULFILLED'].includes(order.status) && (
+                        <button
+                          onClick={() =>
+                            onUpdateOrderStatus(
+                              order.id,
+                              'PREPARING',
+                              'Warehouse crew commenced picking and crate boxing'
+                            )
+                          }
+                          className="flex items-center space-x-1 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          <Package className="w-3 h-3" />
+                          <span>Start Packing</span>
+                        </button>
+                      )}
 
-                    {order.status === 'READY_FOR_PICKUP' && (
-                      <span className="text-[11px] text-slate-700 font-medium flex items-center space-x-1 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                        <Clock className="w-3 h-3 animate-spin text-slate-500" />
-                        <span>Staged in Bay · Awaiting Rider</span>
-                      </span>
-                    )}
+                      {order.status === 'PREPARING' && (
+                        <button
+                          onClick={() =>
+                            onUpdateOrderStatus(
+                              order.id,
+                              'READY_FOR_PICKUP',
+                              'Order packaged, labeled, and staged in wholesale loading bay'
+                            )
+                          }
+                          className="flex items-center space-x-1 bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          <Package className="w-3 h-3" />
+                          <span>Stage for Rider</span>
+                        </button>
+                      )}
+
+                      {order.status === 'READY_FOR_PICKUP' && (
+                        <span className="text-[11px] text-slate-700 font-medium flex items-center space-x-1 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                          <Clock className="w-3 h-3 animate-spin text-slate-500" />
+                          <span>Staged in Bay · Awaiting Rider</span>
+                        </span>
+                      )}
+                    </div>
 
                     {['RIDER_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(
                       order.status
@@ -605,6 +672,122 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
           </div>
         </div>
       )}
+
+      {/* Line-Item Substitution Modal (FR-WHS-006) */}
+      {substitutionTarget && (() => {
+        const order = substitutionTarget.order;
+        const currentItem = order.items[substitutionTarget.itemIdx];
+        const candidateProduct = PRODUCTS.find((p) => p.id === selectedSubstituteId) || PRODUCTS.find((p) => p.id !== currentItem.productId) || PRODUCTS[0];
+        const candidateSupplierProduct = SUPPLIER_PRODUCTS.find(
+          (sp) => sp.productId === candidateProduct.id && sp.supplierId === currentWholesaler.id
+        ) || SUPPLIER_PRODUCTS.find((sp) => sp.productId === candidateProduct.id) || {
+          id: 'sp_default',
+          productId: candidateProduct.id,
+          supplierId: currentWholesaler.id,
+          price: candidateProduct.basePrice,
+          availability: true,
+        };
+
+        const oldItemTotal = currentItem.totalPrice;
+        const newItemTotal = candidateSupplierProduct.price * currentItem.quantity;
+        const delta = newItemTotal - oldItemTotal;
+
+        const handleConfirmSubstitution = () => {
+          if (onSubstituteOrderItem) {
+            onSubstituteOrderItem(
+              order.id,
+              substitutionTarget.itemIdx,
+              candidateProduct,
+              candidateSupplierProduct as SupplierProduct,
+              substitutionReasonText
+            );
+          }
+          setSubstitutionTarget(null);
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/40 animate-in fade-in">
+            <div className="bg-white border border-slate-300 rounded-md w-full max-w-md p-4 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                <div className="flex items-center space-x-2">
+                  <Package className="w-4 h-4 text-slate-800" />
+                  <h3 className="font-bold text-sm text-slate-900">Line-Item Substitution (FR-WHS-006)</h3>
+                </div>
+                <button
+                  onClick={() => setSubstitutionTarget(null)}
+                  className="text-slate-400 hover:text-slate-600 text-xs font-mono"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="text-xs space-y-3">
+                <div className="bg-slate-50 p-2.5 rounded border border-slate-200 space-y-1">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Current Out-of-Stock Item</span>
+                  <div className="font-bold text-slate-900">{currentItem.productName}</div>
+                  <div className="text-slate-500 font-mono">
+                    {currentItem.quantity}x @ KES {currentItem.unitPrice} = KES {currentItem.totalPrice.toLocaleString()}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Select In-Stock Alternative Product:
+                  </label>
+                  <select
+                    value={selectedSubstituteId || candidateProduct.id}
+                    onChange={(e) => setSelectedSubstituteId(e.target.value)}
+                    className="w-full border border-slate-300 rounded p-1.5 bg-white text-xs text-slate-900 font-medium"
+                  >
+                    {PRODUCTS.filter((p) => p.id !== currentItem.productId).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.packSize}) - KES {p.basePrice}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    Substitution Reason & Wholesaler Audit Note:
+                  </label>
+                  <input
+                    type="text"
+                    value={substitutionReasonText}
+                    onChange={(e) => setSubstitutionReasonText(e.target.value)}
+                    className="w-full border border-slate-300 rounded p-1.5 bg-white text-xs text-slate-900"
+                    placeholder="e.g. Out of stock; substituted with equivalent brand"
+                  />
+                </div>
+
+                <div className="bg-slate-100 p-2.5 rounded border border-slate-200 flex items-center justify-between font-mono">
+                  <span className="text-slate-700 text-[11px]">Financial Delta:</span>
+                  <span className={`font-bold ${delta >= 0 ? 'text-slate-900' : 'text-emerald-700'}`}>
+                    {delta >= 0 ? `+KES ${delta.toLocaleString()}` : `-KES ${Math.abs(delta).toLocaleString()} (Refunded to Duka)`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setSubstitutionTarget(null)}
+                  className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSubstitution}
+                  className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded transition-colors cursor-pointer"
+                >
+                  Confirm Substitution
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

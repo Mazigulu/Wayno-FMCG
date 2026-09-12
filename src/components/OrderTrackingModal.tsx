@@ -39,8 +39,12 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
         return 0;
       case 'PAID':
       case 'FULFILLMENT_PENDING':
+      case 'SUPPLIER_PENDING':
         return 1;
+      case 'ACCEPTED':
       case 'SUPPLIER_CONFIRMED':
+      case 'PREPARING':
+      case 'PARTIALLY_FULFILLED':
         return 2;
       case 'READY_FOR_PICKUP':
         return 3;
@@ -52,12 +56,17 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
         return 6;
       case 'DELIVERED':
         return 7;
+      case 'CANCELLED':
+      case 'FAILED':
+      case 'REFUNDED':
+        return -1;
       default:
         return 0;
     }
   };
 
   const currentStepIdx = getStepIndex(order.status);
+  const isFailedOrCancelled = ['CANCELLED', 'FAILED', 'REFUNDED'].includes(order.status);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/40 animate-in fade-in">
@@ -89,6 +98,39 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
 
         {/* Modal Body */}
         <div className="p-4 overflow-y-auto space-y-4 flex-1 text-xs">
+          {/* Delivery Exception Alert (FR-FUL-007) */}
+          {order.deliveryException && (
+            <div className="bg-rose-50 border border-rose-300 rounded p-3 text-rose-900 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold text-rose-800">
+                <span className="font-mono bg-rose-200 text-rose-900 px-1.5 py-0.5 rounded text-[10px]">
+                  {order.deliveryException.code}
+                </span>
+                <span>Delivery Exception Logged</span>
+              </div>
+              <p className="text-xs">{order.deliveryException.reason}</p>
+              <div className="text-[10px] text-rose-700 flex items-center justify-between pt-1 border-t border-rose-200">
+                <span>Reported by: {order.deliveryException.reportedByName}</span>
+                <span>{new Date(order.deliveryException.timestamp).toLocaleTimeString()}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Refund Confirmation Record (FR-FIN-008) */}
+          {order.refundRecord && (
+            <div className="bg-emerald-50 border border-emerald-300 rounded p-3 text-emerald-900 space-y-1 font-mono">
+              <div className="flex items-center justify-between font-bold text-emerald-900">
+                <span>M-PESA REVERSAL COMPLETED</span>
+                <span>KES {order.refundRecord.amount.toLocaleString()}</span>
+              </div>
+              <div className="text-[11px] text-emerald-800">
+                Reversal ID: {order.refundRecord.reversalTransactionId}
+              </div>
+              <div className="text-[10px] text-emerald-700 font-sans">
+                Reason: {order.refundRecord.reason} · Handled by: {order.refundRecord.authorizedBy}
+              </div>
+            </div>
+          )}
+
           {/* OTP Box */}
           <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded border border-slate-200">
             <div className="space-y-0.5">
@@ -167,12 +209,24 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             </span>
             <div className="space-y-1.5 divide-y divide-slate-200">
               {order.items.map((it, idx) => (
-                <div key={idx} className="pt-1.5 first:pt-0 flex justify-between items-center">
+                <div key={idx} className="pt-1.5 first:pt-0 flex justify-between items-start">
                   <div>
-                    <span className="font-medium text-slate-900 block">{it.productName}</span>
-                    <span className="text-[10px] text-slate-500">
+                    <div className="flex items-center space-x-1.5">
+                      <span className="font-medium text-slate-900">{it.productName}</span>
+                      {it.isSubstituted && (
+                        <span className="text-[9px] bg-amber-100 text-amber-900 font-semibold px-1 rounded border border-amber-300">
+                          SUBSTITUTED
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-500 block">
                       {it.quantity}x {it.packSize}
                     </span>
+                    {it.isSubstituted && (
+                      <span className="text-[10px] text-amber-800 italic block">
+                        Replaced "{it.originalProductName}" ({it.substitutionReason})
+                      </span>
+                    )}
                   </div>
                   <span className="font-mono text-slate-800 font-medium">
                     KES {it.totalPrice.toLocaleString()}

@@ -14,6 +14,7 @@ function AppContent() {
     orders,
     events,
     cart,
+    paymentRecords,
     currentShop,
     allShops,
     isCartOpen,
@@ -29,7 +30,28 @@ function AppContent() {
     handleOrderCreated,
     handleUpdateOrderStatus,
     handleAssignRider,
+    handleReassignRider,
+    handleSubstituteOrderItem,
+    handleCaptureDeliveryException,
+    handleInitiateRefund,
   } = useWayno();
+
+  const renderAdminHub = (subTab?: any) => (
+    <AdminOperationsHub
+      orders={orders}
+      events={events}
+      paymentRecords={paymentRecords}
+      onManualOverrideStatus={handleUpdateOrderStatus}
+      onReassignRider={handleReassignRider}
+      onInitiateRefund={(orderId, reason) => {
+        const target = orders.find(o => o.id === orderId);
+        if (target) {
+          handleInitiateRefund(orderId, target.totalAmount, reason);
+        }
+      }}
+      defaultSubTab={subTab}
+    />
+  );
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex flex-col font-sans selection:bg-slate-900 selection:text-white">
@@ -70,6 +92,7 @@ function AppContent() {
               <WholesalerPortal
                 orders={orders}
                 onUpdateOrderStatus={handleUpdateOrderStatus}
+                onSubstituteOrderItem={handleSubstituteOrderItem}
               />
             }
           />
@@ -81,297 +104,50 @@ function AppContent() {
                 orders={orders}
                 onAssignRider={handleAssignRider}
                 onUpdateOrderStatus={handleUpdateOrderStatus}
+                onCaptureDeliveryException={handleCaptureDeliveryException}
               />
             }
           />
 
           {/* Consolidated Admin Operations Hub */}
-          <Route
-            path="/admin"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="operations"
-              />
-            }
-          />
-          <Route
-            path="/admin/:tab"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-              />
-            }
-          />
+          <Route path="/admin" element={renderAdminHub('operations')} />
+          <Route path="/admin/:tab" element={renderAdminHub()} />
 
           {/* Integrated shortcuts / deep links to the modules within Admin Operations */}
-          <Route
-            path="/operations"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="operations"
-              />
-            }
-          />
-
-          <Route
-            path="/demand"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="demand"
-              />
-            }
-          />
-          <Route
-            path="/demand-analytics"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="demand"
-              />
-            }
-          />
+          <Route path="/operations" element={renderAdminHub('operations')} />
+          <Route path="/reconciliation" element={renderAdminHub('operations')} />
+          <Route path="/reconcile" element={renderAdminHub('operations')} />
+          <Route path="/demand" element={renderAdminHub('demand')} />
+          <Route path="/demand-analytics" element={renderAdminHub('demand')} />
 
           {/* Aggregated Market Intelligence Pipeline Routes */}
-          <Route
-            path="/intelligence"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="intelligence"
-              />
-            }
-          />
-          <Route
-            path="/market-intelligence"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="intelligence"
-              />
-            }
-          />
-          <Route
-            path="/market"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="intelligence"
-              />
-            }
-          />
-          <Route
-            path="/pipeline"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="intelligence"
-              />
-            }
-          />
+          <Route path="/intelligence" element={renderAdminHub('intelligence')} />
+          <Route path="/market-intelligence" element={renderAdminHub('intelligence')} />
+          <Route path="/market" element={renderAdminHub('intelligence')} />
+          <Route path="/pipeline" element={renderAdminHub('intelligence')} />
 
-          <Route
-            path="/promotions"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="promotions"
-              />
-            }
-          />
-          <Route
-            path="/promotional-placements"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="promotions"
-              />
-            }
-          />
-          <Route
-            path="/promos"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="promotions"
-              />
-            }
-          />
+          <Route path="/promotions" element={renderAdminHub('promotions')} />
+          <Route path="/promotional-placements" element={renderAdminHub('promotions')} />
+          <Route path="/promos" element={renderAdminHub('promotions')} />
 
-          <Route
-            path="/benchmark"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="benchmark"
-              />
-            }
-          />
-          <Route
-            path="/search"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="benchmark"
-              />
-            }
-          />
+          <Route path="/benchmark" element={renderAdminHub('benchmark')} />
+          <Route path="/search" element={renderAdminHub('benchmark')} />
 
-          <Route
-            path="/rules"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="rules"
-              />
-            }
-          />
-          <Route
-            path="/business-rules"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="rules"
-              />
-            }
-          />
+          <Route path="/rules" element={renderAdminHub('rules')} />
+          <Route path="/business-rules" element={renderAdminHub('rules')} />
 
-          <Route
-            path="/nfr"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="nfr"
-              />
-            }
-          />
-          <Route
-            path="/non-functional"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="nfr"
-              />
-            }
-          />
-          <Route
-            path="/requirements"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="nfr"
-              />
-            }
-          />
+          <Route path="/nfr" element={renderAdminHub('nfr')} />
+          <Route path="/non-functional" element={renderAdminHub('nfr')} />
+          <Route path="/requirements" element={renderAdminHub('nfr')} />
 
-          <Route
-            path="/architecture"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="architecture"
-              />
-            }
-          />
-          <Route
-            path="/flows"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="architecture"
-              />
-            }
-          />
-          <Route
-            path="/navigation"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="architecture"
-              />
-            }
-          />
+          <Route path="/architecture" element={renderAdminHub('architecture')} />
+          <Route path="/flows" element={renderAdminHub('architecture')} />
+          <Route path="/navigation" element={renderAdminHub('architecture')} />
 
           {/* Dedicated Monorepo Repository Structure Routes */}
-          <Route
-            path="/repository"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="repository"
-              />
-            }
-          />
-          <Route
-            path="/repo"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="repository"
-              />
-            }
-          />
-          <Route
-            path="/monorepo"
-            element={
-              <AdminOperationsHub
-                orders={orders}
-                events={events}
-                onManualOverrideStatus={handleUpdateOrderStatus}
-                defaultSubTab="repository"
-              />
-            }
-          />
+          <Route path="/repository" element={renderAdminHub('repository')} />
+          <Route path="/repo" element={renderAdminHub('repository')} />
+          <Route path="/monorepo" element={renderAdminHub('repository')} />
 
           {/* Catch-all fallback */}
           <Route path="*" element={<Navigate to="/retailer" replace />} />

@@ -16,7 +16,7 @@ import {
   Tag,
   FolderTree
 } from 'lucide-react';
-import { Order, TelemetryEvent, OrderState } from '../types/wayno';
+import { Order, TelemetryEvent, OrderState, PaymentRecord, Rider } from '../types/wayno';
 import { OperationsConsole } from './OperationsConsole';
 import { DemandAnalyticsConsole } from './DemandAnalyticsConsole';
 import { MarketIntelligenceConsole } from './MarketIntelligenceConsole';
@@ -26,20 +26,28 @@ import { BusinessRulesConsole } from './BusinessRulesConsole';
 import { NFRConsole } from './NFRConsole';
 import { ArchitectureWorkspace } from './ArchitectureWorkspace';
 import { RepositoryStructureExplorer } from './RepositoryStructureExplorer';
+import { DatabaseIndexingConsole } from './DatabaseIndexingConsole';
+import { RecommendationEngineConsole } from './RecommendationEngineConsole';
 
-export type AdminSubTab = 'operations' | 'demand' | 'intelligence' | 'promotions' | 'benchmark' | 'rules' | 'nfr' | 'architecture' | 'repository';
+export type AdminSubTab = 'operations' | 'demand' | 'intelligence' | 'promotions' | 'benchmark' | 'rules' | 'nfr' | 'architecture' | 'repository' | 'database' | 'recommendations';
 
 interface AdminOperationsHubProps {
   orders: Order[];
   events: TelemetryEvent[];
+  paymentRecords?: PaymentRecord[];
   onManualOverrideStatus: (orderId: string, newState: OrderState, note: string) => void;
+  onReassignRider?: (orderId: string, newRider: Rider, reason: string) => void;
+  onInitiateRefund?: (orderId: string, reason: string) => void;
   defaultSubTab?: AdminSubTab;
 }
 
 export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
   orders,
   events,
+  paymentRecords = [],
   onManualOverrideStatus,
+  onReassignRider,
+  onInitiateRefund,
   defaultSubTab,
 }) => {
   const location = useLocation();
@@ -56,8 +64,33 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
     if (path.includes('/nfr') || path.includes('/non-functional') || path.includes('/requirements')) return 'nfr';
     if (path.includes('/architecture') || path.includes('/flows') || path.includes('/navigation')) return 'architecture';
     if (path.includes('/repo') || path.includes('/repository') || path.includes('/monorepo')) return 'repository';
-    if (path.includes('/operations')) return 'operations';
+    if (path.includes('/database') || path.includes('/indexes') || path.includes('/indexing') || path.includes('/postgis') || path.includes('/sql')) return 'database';
+    if (
+      path.includes('/operations') || 
+      path.includes('/retailers') || 
+      path.includes('/wholesalers') || 
+      path.includes('/riders') || 
+      path.includes('/products') || 
+      path.includes('/payments') || 
+      path.includes('/deliveries') || 
+      path.includes('/issues') || 
+      path.includes('/search-analytics')
+    ) return 'operations';
     return defaultSubTab || 'operations';
+  };
+
+  const resolveOperationsPage = () => {
+    const path = location.pathname;
+    if (path.includes('/retailers')) return 'retailers';
+    if (path.includes('/wholesalers')) return 'wholesalers';
+    if (path.includes('/riders')) return 'riders';
+    if (path.includes('/products')) return 'products';
+    if (path.includes('/payments') || path.includes('/reconciliation')) return 'payments';
+    if (path.includes('/deliveries')) return 'deliveries';
+    if (path.includes('/issues')) return 'issues';
+    if (path.includes('/search-analytics')) return 'search_analytics';
+    if (path.includes('/telemetry')) return 'telemetry';
+    return undefined;
   };
 
   const [activeTab, setActiveTab] = useState<AdminSubTab>(resolveTabFromPath);
@@ -297,6 +330,25 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
               wayno/
             </span>
           </button>
+
+          {/* 7. Database & PostGIS Indexing */}
+          <button
+            id="admin-tab-database"
+            onClick={() => handleTabChange('database')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              activeTab === 'database'
+                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 text-blue-400" />
+            <span>Database & Indexes</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              activeTab === 'database' ? 'bg-white text-slate-900' : 'bg-blue-100 text-blue-800'
+            }`}>
+              PostGIS
+            </span>
+          </button>
         </div>
       </div>
 
@@ -306,7 +358,11 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
           <OperationsConsole
             orders={orders}
             events={events}
+            paymentRecords={paymentRecords}
             onManualOverrideStatus={onManualOverrideStatus}
+            onReassignRider={onReassignRider}
+            onInitiateRefund={onInitiateRefund}
+            initialPage={resolveOperationsPage()}
           />
         )}
 
@@ -340,6 +396,10 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
 
         {activeTab === 'repository' && (
           <RepositoryStructureExplorer />
+        )}
+
+        {activeTab === 'database' && (
+          <DatabaseIndexingConsole />
         )}
       </div>
     </div>

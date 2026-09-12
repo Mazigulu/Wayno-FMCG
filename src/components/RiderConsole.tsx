@@ -20,7 +20,7 @@ import {
   User,
   Radio
 } from 'lucide-react';
-import { Rider, Order } from '../types/wayno';
+import { Rider, Order, DeliveryExceptionCode } from '../types/wayno';
 import { INITIAL_RIDERS } from '../data/mockData';
 
 export type RiderPage = 'active-run' | 'available-jobs' | 'earnings';
@@ -29,12 +29,19 @@ interface RiderConsoleProps {
   orders: Order[];
   onAssignRider: (orderId: string, rider: Rider) => void;
   onUpdateOrderStatus: (orderId: string, nextStatus: any, note: string) => void;
+  onCaptureDeliveryException?: (
+    orderId: string,
+    code: DeliveryExceptionCode,
+    reason: string,
+    rider: Rider
+  ) => void;
 }
 
 export const RiderConsole: React.FC<RiderConsoleProps> = ({
   orders,
   onAssignRider,
   onUpdateOrderStatus,
+  onCaptureDeliveryException,
 }) => {
   const [currentPage, setCurrentPage] = useState<RiderPage>('active-run');
   const [riders, setRiders] = useState<Rider[]>(INITIAL_RIDERS);
@@ -42,6 +49,11 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
   const [pickupCodeInput, setPickupCodeInput] = useState('');
   const [deliveryCodeInput, setDeliveryCodeInput] = useState('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
+
+  // Delivery Exception State (FR-FUL-007)
+  const [isExceptionModalOpen, setIsExceptionModalOpen] = useState(false);
+  const [exceptionCode, setExceptionCode] = useState<DeliveryExceptionCode>('SHOP_CLOSED');
+  const [exceptionReason, setExceptionReason] = useState('Duka roller shutter locked; shopkeeper not present');
 
   const activeRider = riders.find((r) => r.id === activeRiderId) || riders[0];
 
@@ -104,6 +116,22 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
     } else {
       setVerificationError(`Invalid Duka Delivery OTP. (Expected: ${order.deliveryOtp})`);
     }
+  };
+
+  const handleConfirmException = (order: Order) => {
+    if (onCaptureDeliveryException) {
+      onCaptureDeliveryException(order.id, exceptionCode, exceptionReason, activeRider);
+    } else {
+      onUpdateOrderStatus(
+        order.id,
+        'FAILED',
+        `Rider ${activeRider.name} reported delivery exception [${exceptionCode}]: ${exceptionReason}`
+      );
+    }
+    setRiders((prev) =>
+      prev.map((r) => (r.id === activeRider.id ? { ...r, status: 'AVAILABLE' } : r))
+    );
+    setIsExceptionModalOpen(false);
   };
 
   const todayEarnings = activeRider.completedTrips * 150;
@@ -287,7 +315,7 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
                     </p>
 
                     {assignedOrder.status === 'OUT_FOR_DELIVERY' && (
-                      <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 max-w-sm">
+                      <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 max-w-md">
                         <label className="text-xs font-medium text-slate-700 block">
                           Ask Shopkeeper for Delivery Confirmation OTP:
                         </label>
@@ -304,6 +332,17 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
                             className="bg-emerald-700 hover:bg-emerald-800 text-white font-medium px-3 py-1.5 rounded text-xs transition-colors cursor-pointer"
                           >
                             Confirm Delivery
+                          </button>
+                        </div>
+                        <div className="pt-1 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">Issue completing run?</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsExceptionModalOpen(true)}
+                            className="text-[11px] text-rose-700 hover:text-rose-800 font-medium underline flex items-center space-x-1 cursor-pointer"
+                          >
+                            <AlertCircle className="w-3 h-3" />
+                            <span>Report Delivery Exception (FR-FUL-007)</span>
                           </button>
                         </div>
                       </div>
@@ -501,6 +540,92 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Delivery Exception Modal (FR-FUL-007) */}
+      {isExceptionModalOpen && assignedOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/40 animate-in fade-in">
+          <div className="bg-white border border-slate-300 rounded-md w-full max-w-md p-4 shadow-xl space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600" />
+                <h3 className="font-bold text-sm text-slate-900">Report Delivery Exception (FR-FUL-007)</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExceptionModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-mono cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs space-y-3">
+              <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
+                <span className="text-[10px] text-slate-400 uppercase font-semibold block">Destination Duka</span>
+                <div className="font-bold text-slate-900">{assignedOrder.shopName}</div>
+                <div className="text-slate-500">{assignedOrder.shopAddress}</div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Root Cause Exception Code:
+                </label>
+                <select
+                  value={exceptionCode}
+                  onChange={(e) => setExceptionCode(e.target.value as DeliveryExceptionCode)}
+                  className="w-full border border-slate-300 rounded p-1.5 bg-white text-xs text-slate-900 font-medium"
+                >
+                  <option value="SHOP_CLOSED">SHOP_CLOSED - Duka is locked/closed upon arrival</option>
+                  <option value="RECIPIENT_UNREACHABLE">RECIPIENT_UNREACHABLE - Shopkeeper phone off / no response</option>
+                  <option value="DAMAGED_GOODS_REFUSED">DAMAGED_GOODS_REFUSED - Goods damaged or rejected</option>
+                  <option value="PAYMENT_DISPUTE">PAYMENT_DISPUTE - Pricing or settlement conflict</option>
+                  <option value="WRONG_LOCATION">WRONG_LOCATION - Location incorrect / inaccessible road</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Rider Detailed Field Notes:
+                </label>
+                <textarea
+                  rows={3}
+                  value={exceptionReason}
+                  onChange={(e) => setExceptionReason(e.target.value)}
+                  className="w-full border border-slate-300 rounded p-1.5 bg-white text-xs text-slate-900"
+                  placeholder="Provide explicit context for dispatch and operations auditing..."
+                />
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded p-2.5 text-[11px] text-amber-900 space-y-1">
+                <div className="font-semibold flex items-center space-x-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Protocol Notice</span>
+                </div>
+                <p>
+                  Submitting this exception marks the delivery attempt as failed. You are instructed to retain the sealed package in your cargo box and return it safely to the originating wholesale depot.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsExceptionModalOpen(false)}
+                className="px-3 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium rounded transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmException(assignedOrder)}
+                className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold rounded transition-colors cursor-pointer"
+              >
+                Confirm Exception & Abort Run
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -30,6 +30,7 @@ import {
   Search,
   BookOpen
 } from 'lucide-react';
+import { DatabaseIndexingConsole } from './DatabaseIndexingConsole';
 
 interface RepoItem {
   id: string;
@@ -511,7 +512,136 @@ pandas = "^2.2.0"`
     badge: 'Database Assets',
     description: 'Database migrations, time-based table partitioning, seed SKU catalogs, and GIS delivery boundaries.',
     children: [
-      { id: 'data-migrations', name: 'migrations/', type: 'folder', path: 'data/migrations', tech: 'SQL', description: 'PostgreSQL relational schemas with timescale partitioning on order telemetry.' },
+      { 
+        id: 'data-migrations', 
+        name: 'migrations/', 
+        type: 'folder', 
+        path: 'data/migrations', 
+        tech: 'PostGIS / SQL', 
+        description: 'PostgreSQL relational schemas with B-tree composites, PostGIS spatial GiST, GIN trigram, and TimescaleDB hypertable indexing.',
+        children: [
+          {
+            id: 'mig-001',
+            name: '001_core_tables_and_pks.sql',
+            type: 'file',
+            path: 'data/migrations/001_core_tables_and_pks.sql',
+            tech: 'PostGIS / DDL',
+            description: 'Core tables (retailers, shops, wholesalers, products, orders) with UUID primary keys and foreign key constraints.',
+            codePreview: `-- data/migrations/001_core_tables_and_pks.sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "postgis";
+CREATE EXTENSION IF NOT EXISTS "pg_trgm";
+
+CREATE TABLE IF NOT EXISTS retailers (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    shop_owner VARCHAR(255) NOT NULL,
+    phone VARCHAR(32) NOT NULL,
+    service_zone_id VARCHAR(32) NOT NULL,
+    credit_limit NUMERIC(10, 2) NOT NULL DEFAULT 50000.00
+);
+
+CREATE TABLE IF NOT EXISTS shops (
+    id VARCHAR(64) PRIMARY KEY,
+    retailer_id VARCHAR(64) NOT NULL REFERENCES retailers(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    geom GEOMETRY(Point, 4326) NOT NULL
+);`
+          },
+          {
+            id: 'mig-002',
+            name: '002_btree_composite_indexes.sql',
+            type: 'file',
+            path: 'data/migrations/002_btree_composite_indexes.sql',
+            tech: 'B-Tree Indexes',
+            description: 'Composite B-tree indexes for duka order history, wholesaler prep queues, and payment lookups.',
+            codePreview: `-- data/migrations/002_btree_composite_indexes.sql
+-- Optimizes high-throughput transactional queries
+CREATE INDEX idx_orders_retailer_created_at_desc 
+ON orders (retailer_id, created_at DESC);
+
+CREATE INDEX idx_orders_wholesaler_created 
+ON orders (wholesaler_id, created_at ASC);
+
+CREATE INDEX idx_order_items_order_id 
+ON order_items (order_id);
+
+CREATE UNIQUE INDEX idx_wholesaler_inventory_composite 
+ON wholesaler_inventory (wholesaler_id, product_id);`
+          },
+          {
+            id: 'mig-003',
+            name: '003_postgis_spatial_gist_indexes.sql',
+            type: 'file',
+            path: 'data/migrations/003_postgis_spatial_gist_indexes.sql',
+            tech: 'PostGIS GiST',
+            description: 'Spatial R-Tree GiST indexes for sub-5ms corridor geofencing and nearest available courier dispatch.',
+            codePreview: `-- data/migrations/003_postgis_spatial_gist_indexes.sql
+-- R-Tree Spatial GiST Indexes for sub-5ms corridor geofencing
+CREATE INDEX idx_shops_location_geom_gist 
+ON shops USING GIST (geom);
+
+CREATE INDEX idx_wholesalers_geom_gist 
+ON wholesalers USING GIST (geom);
+
+CREATE INDEX idx_riders_last_known_location_gist 
+ON riders USING GIST (last_known_location);
+
+CREATE INDEX idx_corridors_boundary_gist 
+ON delivery_corridors USING GIST (boundary_geom);`
+          },
+          {
+            id: 'mig-004',
+            name: '004_gin_trigram_search_indexes.sql',
+            type: 'file',
+            path: 'data/migrations/004_gin_trigram_search_indexes.sql',
+            tech: 'GIN Trigram',
+            description: 'Inverted GIN trigram and text array indexes for sub-10ms Sheng & Swahili phonetic matching.',
+            codePreview: `-- data/migrations/004_gin_trigram_search_indexes.sql
+-- Trigram GIN index for typo-tolerant product name searches
+CREATE INDEX idx_products_name_trgm_gin 
+ON products USING GIN (name gin_trgm_ops);
+
+-- GIN array index for Swahili & Sheng vernacular search aliases
+-- ("unga wa ngano", "chapo", "sabuni", "mafuta", "sukari")
+CREATE INDEX idx_products_aliases_gin 
+ON products USING GIN (aliases);`
+          },
+          {
+            id: 'mig-005',
+            name: '005_partial_and_filtered_indexes.sql',
+            type: 'file',
+            path: 'data/migrations/005_partial_and_filtered_indexes.sql',
+            tech: 'Partial Indexes',
+            description: 'Targeted partial indexes pruning >90% of index RAM footprint for active orders and low stock.',
+            codePreview: `-- data/migrations/005_partial_and_filtered_indexes.sql
+-- Active in-flight pipeline orders (filters out completed/failed orders)
+CREATE INDEX idx_orders_active_pipeline_partial 
+ON orders (delivery_corridor, status, created_at DESC) 
+WHERE status NOT IN ('DELIVERED', 'CANCELLED', 'FAILED', 'REFUNDED');
+
+-- Low-stock procurement alerts (<20 units remaining in depot)
+CREATE INDEX idx_wholesaler_low_stock_partial 
+ON wholesaler_inventory (wholesaler_id, available_stock) 
+WHERE available_stock < 20;`
+          },
+          {
+            id: 'mig-006',
+            name: '006_timescaledb_hypertable_indexing.sql',
+            type: 'file',
+            path: 'data/migrations/006_timescaledb_hypertable_indexing.sql',
+            tech: 'TimescaleDB',
+            description: 'TimescaleDB hypertable time-bucketed composite partitioning and columnar compression for telemetry.',
+            codePreview: `-- data/migrations/006_timescaledb_hypertable_indexing.sql
+-- Convert telemetry_events table to hypertable partitioned by 24h chunks
+SELECT create_hypertable('telemetry_events', 'timestamp', chunk_time_interval => INTERVAL '24 hours');
+
+-- Composite hypertable index for real-time SLA and event streaming
+CREATE INDEX idx_telemetry_time_bucket_event_type 
+ON telemetry_events (timestamp DESC, event_type, order_id);`
+          }
+        ]
+      },
       { id: 'data-seeds', name: 'seeds/', type: 'folder', path: 'data/seeds', tech: 'JSON', description: 'Canonical FMCG SKU catalogs, Nairobi wholesaler depots, and sample duka retail locations.' },
       { id: 'data-gis', name: 'gis/', type: 'folder', path: 'data/gis', tech: 'GeoJSON', description: 'Nairobi delivery corridor polygons: Zone 1 (Boda ≤3km), Zone 2 (Express ≤6km), Zone 3 (Extended).' }
     ],
@@ -658,7 +788,7 @@ export default function () {
 ];
 
 export const RepositoryStructureExplorer: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'tree' | 'modules' | 'dependency_graph' | 'cli'>('tree');
+  const [activeTab, setActiveTab] = useState<'tree' | 'modules' | 'dependency_graph' | 'cli' | 'indexing'>('tree');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({
     apps: true,
     'apps-api': true,
@@ -811,6 +941,23 @@ export const RepositoryStructureExplorer: React.FC = () => {
           >
             <Terminal className="w-3.5 h-3.5 text-purple-400" />
             <span>Turborepo & CLI Commands</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('indexing')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'indexing'
+                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Database & PostGIS Indexing</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono font-bold ${
+              activeTab === 'indexing' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              22 Indexes
+            </span>
           </button>
         </div>
       </div>
@@ -1268,6 +1415,11 @@ apps/api (NestJS)
             </div>
           </div>
         </div>
+      )}
+
+      {/* Tab 5: Database & PostGIS Indexing Architecture */}
+      {activeTab === 'indexing' && (
+        <DatabaseIndexingConsole />
       )}
     </div>
   );

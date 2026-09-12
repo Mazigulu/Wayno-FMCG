@@ -323,7 +323,7 @@ export const DukaEligibilityMatrix: React.FC<DukaEligibilityMatrixProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredEvaluations.map(({ campaign, evalResult }) => {
                 const isConquest = campaign.objective === 'BRAND_CONQUESTING';
-                const hasConquestTrigger = evalResult.isConquestMatch;
+                const hasConquestTrigger = evalResult.conquestTriggered;
 
                 return (
                   <tr
@@ -364,7 +364,7 @@ export const DukaEligibilityMatrix: React.FC<DukaEligibilityMatrixProps> = ({
                       <span className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold ${
                         campaign.objective === 'BRAND_CONQUESTING'
                           ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                          : campaign.objective === 'LAPSED_DUKA_WINBACK'
+                          : campaign.objective === 'LAPSED_DUKA_REACTIVATION'
                           ? 'bg-amber-50 text-amber-800 border border-amber-200'
                           : campaign.objective === 'GEO_ZONE_SURGE'
                           ? 'bg-blue-50 text-blue-800 border border-blue-200'
@@ -372,7 +372,7 @@ export const DukaEligibilityMatrix: React.FC<DukaEligibilityMatrixProps> = ({
                       }`}>
                         {campaign.objective === 'BRAND_CONQUESTING' && <Crosshair className="w-2.5 h-2.5" />}
                         {campaign.objective === 'GEO_ZONE_SURGE' && <MapPin className="w-2.5 h-2.5" />}
-                        {campaign.objective === 'LAPSED_DUKA_WINBACK' && <Zap className="w-2.5 h-2.5" />}
+                        {campaign.objective === 'LAPSED_DUKA_REACTIVATION' && <Zap className="w-2.5 h-2.5" />}
                         <span>{campaign.objective?.replace(/_/g, ' ') || 'STANDARD_PROMO'}</span>
                       </span>
                     </td>
