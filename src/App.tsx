@@ -14,6 +14,8 @@ function AppContent() {
     orders,
     events,
     cart,
+    payments,
+    paymentTransactions,
     paymentRecords,
     currentShop,
     allShops,
@@ -40,6 +42,8 @@ function AppContent() {
     <AdminOperationsHub
       orders={orders}
       events={events}
+      payments={payments}
+      paymentTransactions={paymentTransactions}
       paymentRecords={paymentRecords}
       onManualOverrideStatus={handleUpdateOrderStatus}
       onReassignRider={handleReassignRider}
@@ -115,6 +119,8 @@ function AppContent() {
 
           {/* Integrated shortcuts / deep links to the modules within Admin Operations */}
           <Route path="/operations" element={renderAdminHub('operations')} />
+          <Route path="/products" element={renderAdminHub('products')} />
+          <Route path="/catalog" element={renderAdminHub('products')} />
           <Route path="/reconciliation" element={renderAdminHub('operations')} />
           <Route path="/reconcile" element={renderAdminHub('operations')} />
           <Route path="/demand" element={renderAdminHub('demand')} />
@@ -148,6 +154,17 @@ function AppContent() {
           <Route path="/repository" element={renderAdminHub('repository')} />
           <Route path="/repo" element={renderAdminHub('repository')} />
           <Route path="/monorepo" element={renderAdminHub('repository')} />
+
+          {/* Database & PostGIS Indexing Routes */}
+          <Route path="/database" element={renderAdminHub('database')} />
+          <Route path="/indexes" element={renderAdminHub('database')} />
+          <Route path="/indexing" element={renderAdminHub('database')} />
+          <Route path="/postgis" element={renderAdminHub('database')} />
+
+          {/* Section 45: 5-Signal Recommendation Engine Routes */}
+          <Route path="/recommendations" element={renderAdminHub('recommendations')} />
+          <Route path="/recommend" element={renderAdminHub('recommendations')} />
+          <Route path="/recommendation-engine" element={renderAdminHub('recommendations')} />
 
           {/* Catch-all fallback */}
           <Route path="*" element={<Navigate to="/retailer" replace />} />

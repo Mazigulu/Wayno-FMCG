@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Search, 
   TrendingUp, 
@@ -9,7 +10,8 @@ import {
   Sparkles, 
   ArrowUpRight,
   Filter,
-  Clock
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import { TelemetryEvent } from '../../types/wayno';
 
@@ -90,12 +92,21 @@ export const SearchAnalyticsDesk: React.FC<SearchAnalyticsDeskProps> = ({ events
           </div>
 
           <div className="flex items-center space-x-2">
+            <Link
+              to="/admin/benchmark"
+              className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white rounded transition-colors"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <span>SLA Benchmark Suite</span>
+              <ExternalLink className="w-3 h-3 text-slate-400 ml-0.5" />
+            </Link>
+
             <input
               type="text"
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
               placeholder="Filter query or product..."
-              className="px-2.5 py-1 text-xs border border-slate-200 rounded bg-slate-50 text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 w-44"
+              className="px-2.5 py-1 text-xs border border-slate-200 rounded bg-slate-50 text-slate-900 focus:bg-white focus:outline-none focus:ring-1 focus:ring-slate-900 w-40 sm:w-44"
             />
 
             <select

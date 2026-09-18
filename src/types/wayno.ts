@@ -10,28 +10,60 @@ export interface User {
   createdAt: string;
 }
 
-export interface RetailerShop {
-  id: string;
-  retailerId: string;
-  name: string;
+export interface Retailer {
+  id: string; // retailer_id
+  name: string; // Legal merchant name
   shopOwner: string;
   phone: string;
-  address: string;
-  latitude: number;
-  longitude: number;
   serviceZoneId: string;
   operatingStatus: 'OPEN' | 'CLOSED';
+  creditLimit?: number;
+  createdAt: string;
 }
 
-export interface WholesalerLocation {
+// Section 12: SHOP (A retailer account should be associated with a physical shop. PostGIS stores geographical position.)
+export interface Shop {
   id: string;
-  wholesalerId: string;
+  retailer_id?: string; // Canonical schema attribute
+  retailerId: string;
   name: string;
-  businessName: string;
   address: string;
   latitude: number;
   longitude: number;
+  service_zone_id?: string; // Canonical schema attribute
   serviceZoneId: string;
+  operating_status?: 'OPEN' | 'CLOSED'; // Canonical schema attribute
+  operatingStatus: 'OPEN' | 'CLOSED';
+  created_at?: string; // Canonical schema attribute
+  createdAt?: string;
+  shopOwner?: string;
+  phone?: string;
+}
+
+export type RetailerShop = Shop;
+
+export interface Wholesaler {
+  id: string; // wholesaler_id (e.g. 'wholesaler_01')
+  name: string; // Legal company name (e.g. 'Somlink FMCG Distributorship Ltd')
+  businessRegNo?: string;
+  phone?: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  createdAt?: string;
+}
+
+// Section 14: WHOLESALER LOCATION (1:N under Wholesaler - allows WAYNO to work geographically)
+export interface WholesalerLocation {
+  id: string;
+  wholesaler_id?: string; // Canonical schema attribute
+  wholesalerId: string;
+  name: string;
+  businessName?: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  service_zone_id?: string; // Canonical schema attribute
+  serviceZoneId: string;
+  operating_hours?: string; // Canonical schema attribute
   operatingHours: string;
   status: 'ACTIVE' | 'INACTIVE';
   reliabilityScore: number; // 0 - 100
@@ -39,21 +71,29 @@ export interface WholesalerLocation {
 }
 
 export interface Product {
-  id: string;
+  id: string; // product_id (e.g. 'prod_njugu')
+  product_id?: string; // canonical schema attribute
   name: string;
   brand: string;
   manufacturer: string;
   description: string;
-  packSize: string;
+  packSize: string; // pack_size (e.g. '50g x 24pk Carton')
+  pack_size?: string; // canonical schema attribute
   unit: string;
-  internalCategory: string;
+  internalCategory: string; // category_internal (e.g. 'Snacks & Confectionery')
+  category_internal?: string; // canonical schema attribute
   keywords: string[];
   synonyms: string[];
   aliases: string[];
   barcode: string;
   image: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'DISCONTINUED' | 'ARCHIVED';
   recommendedRetailPrice: number; // KES
   basePrice?: number;
+  wholesalePrice?: number; // Admin recommended wholesale price (Section 13)
+  minimumOrderQuantity?: number; // Admin minimum order quantity (Section 13)
+  unitWeightKg?: number; // Weight in KG per wholesale unit (e.g. 24kg for bale of flour)
+  unitVolumeCbm?: number; // Volume in cubic meters per wholesale unit (e.g. 0.04 cbm)
 }
 
 export interface SupplierProduct {
@@ -67,6 +107,9 @@ export interface SupplierProduct {
   distanceKm: number;
   updatedAt: string;
   supplierId?: string;
+  safetyStockBuffer?: number; // Safety buffer to shield against digital vs walk-in counter stockouts
+  reservedQty?: number; // Quantity held under virtual reservation
+  reservedUntil?: string; // Expiration ISO string for virtual reservation
 }
 
 export interface SearchResultItem {
@@ -178,7 +221,13 @@ export interface Order {
   riderPhone?: string;
   pickupOtp: string;
   deliveryOtp: string;
+  offlineDeliveryCode?: string; // USSD / SMS fallback code if retailer phone battery dies
   estimatedDeliveryMins: number;
+  totalWeightKg?: number; // Total weight of ordered cargo
+  totalVolumeCbm?: number; // Total volume in cubic meters
+  assignedVehicleType?: 'BODA_BODA' | 'TUK_TUK' | 'PICKUP_VAN';
+  dispatchSplitsCount?: number; // Number of delivery runs required if cargo exceeds vehicle limit
+  stockReservedUntil?: string; // 15-minute virtual reservation expiration
   deliveryException?: DeliveryException;
   reconciliationStatus?: 'SETTLED' | 'PENDING' | 'DISCREPANCY' | 'REVERSED';
   refundRecord?: RefundRecord;
@@ -186,21 +235,59 @@ export interface Order {
   updatedAt: string;
 }
 
-export interface PaymentRecord {
-  id: string;
-  orderId: string;
-  provider: 'M-Pesa';
-  providerReference: string;
-  idempotencyKey: string;
-  phoneNumber: string;
+/**
+ * SECTION 26: PAYMENT LEDGER (TRANSACTION RECORDS)
+ * Do not rely simply on order.payment_status = PAID.
+ * We need transaction records: payments and ideally payment_transactions.
+ * Track:
+ * - payment_id (parent payment entity ID)
+ * - order_id (linked order)
+ * - provider (e.g. M-Pesa)
+ * - provider_reference (Daraja receipt number or reversal reference)
+ * - amount (monetary figure in KES)
+ * - currency ('KES')
+ * - status ('INITIATED' | 'SUCCESS' | 'FAILED' | 'REVERSED')
+ * - initiated_at (timestamp)
+ * - completed_at (timestamp when webhook callback received)
+ * - failure_reason (e.g. user cancelled, insufficient funds, timeout)
+ * This allows true reconciliation.
+ */
+export interface PaymentTransaction {
+  id: string; // transaction_id (e.g. txn_01)
+  paymentId: string; // payment_id foreign key
+  orderId: string; // order_id foreign key
+  provider: 'M-Pesa' | 'Airtel Money' | 'Bank Transfer' | 'Cash on Delivery' | string;
+  providerReference: string; // provider_reference (e.g. QG48291048KE or reversal ref)
+  amount: number; // amount in KES
+  currency: string; // currency (e.g. 'KES')
+  status: 'INITIATED' | 'SUCCESS' | 'FAILED' | 'REVERSED';
+  initiatedAt: string; // initiated_at ISO timestamp
+  completedAt?: string; // completed_at ISO timestamp
+  failureReason?: string; // failure_reason
+  idempotencyKey?: string;
+  phoneNumber?: string;
+  reconciliationState?: 'MATCHED' | 'UNMATCHED_AMOUNT' | 'DUPLICATE_CALLBACK_PREVENTED' | 'REFUNDED' | 'PENDING_RECONCILIATION';
+}
+
+/**
+ * SECTION 26: PAYMENT ENTITY
+ * Parent ledger record representing the payment commitment for an order.
+ */
+export interface Payment {
+  id: string; // payment_id
+  orderId: string; // order_id
   amount: number;
   currency: string;
-  status: 'INITIATED' | 'SUCCESS' | 'FAILED' | 'REVERSED';
-  reconciliationState?: 'MATCHED' | 'UNMATCHED_AMOUNT' | 'DUPLICATE_CALLBACK_PREVENTED' | 'REFUNDED';
-  initiatedAt: string;
-  completedAt?: string;
-  failureReason?: string;
+  status: 'PENDING' | 'PAID' | 'PARTIALLY_PAID' | 'FAILED' | 'REFUNDED';
+  provider: 'M-Pesa' | 'Airtel Money' | 'Bank Transfer' | 'Cash on Delivery' | string;
+  createdAt: string;
+  updatedAt: string;
+  transactionCount: number;
+  latestTransactionId?: string;
+  reconciliationStatus: 'RECONCILED' | 'PENDING_AUDIT' | 'DISCREPANCY';
 }
+
+export type PaymentRecord = PaymentTransaction;
 
 export interface Rider {
   id: string;
@@ -264,4 +351,98 @@ export interface SprintInfo {
   status: 'COMPLETED' | 'IN_PROGRESS' | 'PLANNED';
   deliverables: string[];
   focus: string;
+}
+
+// ============================================================================
+// HIERARCHICAL GEOGRAPHIC SUPPLY NETWORK & 20 KM NODE ARCHITECTURE
+// ============================================================================
+
+export type SupplyNodeLevel = 'ROOT' | 'REGION' | 'LOCAL_NODE';
+
+export interface SupplyNode {
+  id: string; // e.g. 'node_eastleigh_20km', 'region_nairobi_metro', 'root_kenya'
+  parentZoneId: string | null; // Creates explicit tree topology
+  name: string;
+  code: string;
+  level: SupplyNodeLevel;
+  centerPoint: { lat: number; lng: number };
+  radiusKm: number; // 20 km standard for local supply node
+  wholesalerId: string | null; // Primary anchor supplier for this node
+  wholesalerName: string | null;
+  shopsCount: number;
+  status: 'ACTIVE' | 'CONGESTED' | 'MAINTENANCE';
+  inventoryCoveragePct: number;
+}
+
+export interface HierarchicalEscalationStep {
+  stepNumber: number;
+  nodeId: string;
+  nodeName: string;
+  level: SupplyNodeLevel;
+  wholesalerName: string;
+  wholesalerId: string;
+  isAvailable: boolean;
+  stockQuantity: number;
+  wholesalePriceKES: number;
+  sourceType: 'LOCAL_NODE' | 'PARENT_HIERARCHY' | 'GRANDPARENT_ROOT' | 'CROSS_NODE_ESCAPE';
+  distanceKm: number;
+  travelTimeMinutes: number;
+  reason: string;
+}
+
+export interface HierarchicalProcurementResolution {
+  requestId: string;
+  shopId: string;
+  shopName: string;
+  shopCoordinates: { lat: number; lng: number };
+  assignedLocalNode: SupplyNode;
+  productName: string;
+  requestedQty: number;
+  traversalSteps: HierarchicalEscalationStep[];
+  resolvedStep: HierarchicalEscalationStep | null;
+  fulfillmentStatus: 'FULFILLED_LOCAL' | 'FULFILLED_PARENT' | 'FULFILLED_CROSS_NODE' | 'STOCKOUT_ESCALATED_ROOT';
+  totalCostKES: number;
+  leadTimeMinutes: number;
+  transportSurchargeKES: number;
+  procurementIntelligenceNote: string;
+}
+
+export interface VehicleRoutingStop {
+  id: string;
+  shopName: string;
+  latitude: number;
+  longitude: number;
+  cargoWeightKg: number;
+  priority: 'HIGH' | 'NORMAL';
+  timeWindow: string;
+}
+
+export interface VehicleRoutingComparison {
+  depotName: string;
+  stopsCount: number;
+  naiveSequence: string[];
+  naiveDistanceKm: number;
+  naiveDurationMinutes: number;
+  optimizedSequence: string[];
+  optimizedDistanceKm: number;
+  optimizedDurationMinutes: number;
+  fuelSavingsPct: number;
+  timeSavedMinutes: number;
+  carbonReductionKg: number;
+}
+
+export interface RiderMandateEvaluation {
+  roadDistanceKm: number;
+  straightLineDistanceKm: number;
+  normalMandateRadiusKm: number; // 20 km
+  isWithinMandate: boolean;
+  exceptionType: 'IN_MANDATE' | 'ROUTE_EXTENSION' | 'BOUNDARY_HANDOFF' | 'DEDICATED_CARRIER';
+  extraKm: number;
+  baseDeliveryFeeKES: number;
+  extensionFeeKES: number;
+  totalDeliveryFeeKES: number;
+  slaMinutes: string;
+  handoffExchangeHub?: { name: string; latitude: number; longitude: number };
+  recommendedVehicle: 'Boda Boda (Single)' | 'Boda Relay (2 Riders)' | 'Cargo Tuk-Tuk' | '1-Tonne Pickup Van';
+  operationalProcedure: string;
 }

@@ -28,7 +28,8 @@ import {
   Truck,
   AlertOctagon
 } from 'lucide-react';
-import { Order, TelemetryEvent, OrderState, Rider, PaymentRecord } from '../types/wayno';
+import { Order, TelemetryEvent, OrderState, Rider, PaymentRecord, Payment, PaymentTransaction } from '../types/wayno';
+import { paymentService } from '../services/paymentService';
 import { INITIAL_RIDERS, PRODUCTS, INITIAL_SHOPS, WHOLESALERS } from '../data/mockData';
 import { RetailersManager } from './operations/RetailersManager';
 import { WholesalersManager } from './operations/WholesalersManager';
@@ -56,6 +57,8 @@ export type OperationsPage =
 interface OperationsConsoleProps {
   orders: Order[];
   events: TelemetryEvent[];
+  payments?: Payment[];
+  paymentTransactions?: PaymentTransaction[];
   paymentRecords?: PaymentRecord[];
   onManualOverrideStatus: (orderId: string, newState: OrderState, note: string) => void;
   onReassignRider?: (orderId: string, newRider: Rider, reason: string) => void;
@@ -66,6 +69,8 @@ interface OperationsConsoleProps {
 export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
   orders,
   events,
+  payments = [],
+  paymentTransactions = [],
   paymentRecords = [],
   onManualOverrideStatus,
   onReassignRider,
@@ -85,6 +90,12 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
   const [overrideNote, setOverrideNote] = useState('');
   const [orderStateFilter, setOrderStateFilter] = useState<string>('ALL');
 
+  // Section 26: Two-Tier Payment Ledger State
+  const [ledgerViewTab, setLedgerViewTab] = useState<'transactions' | 'payments'>('transactions');
+  const [ledgerStatusFilter, setLedgerStatusFilter] = useState<string>('ALL');
+  const [ledgerSearchQuery, setLedgerSearchQuery] = useState<string>('');
+  const [selectedTxnForAudit, setSelectedTxnForAudit] = useState<PaymentTransaction | null>(null);
+
   // Reassign Rider Modal State (FR-OPS-003)
   const [selectedOrderForReassign, setSelectedOrderForReassign] = useState<Order | null>(null);
   const [selectedRiderId, setSelectedRiderId] = useState<string>(INITIAL_RIDERS[0].id);
@@ -97,6 +108,7 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
   const totalGMV = orders.reduce((acc, o) => acc + o.totalAmount, 0) + 184500;
   const completedOrders = orders.filter((o) => o.status === 'DELIVERED').length + 42;
   const activePipelines = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'FAILED' && o.status !== 'REFUNDED').length;
+  const exceptionalCount = orders.filter((o) => ['CANCELLED', 'FAILED', 'REFUNDED', 'PARTIALLY_FULFILLED'].includes(o.status) || !!o.deliveryException).length;
 
   const ALL_STATES: OrderState[] = [
     'CREATED',
@@ -143,45 +155,40 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
 
   const filteredOrders = orders.filter((o) => {
     if (orderStateFilter === 'ALL') return true;
-    if (orderStateFilter === 'ACTIVE') return o.status !== 'DELIVERED' && o.status !== 'CANCELLED';
+    if (orderStateFilter === 'ACTIVE') return o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'FAILED' && o.status !== 'REFUNDED';
     if (orderStateFilter === 'DELIVERED') return o.status === 'DELIVERED';
+    if (orderStateFilter === 'EXCEPTIONAL') return ['CANCELLED', 'FAILED', 'REFUNDED', 'PARTIALLY_FULFILLED'].includes(o.status) || !!o.deliveryException;
     return o.status === orderStateFilter;
   });
 
   return (
     <div className="space-y-4 pb-20">
       {/* Real-time Network Telemetry Ribbon */}
-      <div className="bg-white border border-slate-200 rounded-md p-3.5 sm:p-4 text-slate-900 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
-              <Activity className="w-4 h-4" />
+      <div className="bg-white border border-slate-200 rounded-md p-3 text-slate-900 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-6 h-6 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
+              <Activity className="w-3.5 h-3.5 text-emerald-400" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-sm font-bold text-slate-900">
-                  WAYNO Network Operations Center
-                </h1>
-                <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200">
-                  Node: Nairobi East & West
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 truncate max-w-xs sm:max-w-md">
-                Distributed Event Broker · TLS 1.3 · API Gateway p95: 22ms · S3 Data Lake Ingestion
-              </p>
+            <div className="flex items-center space-x-2">
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
+                Live Operations Desks
+              </h2>
+              <span className="text-[10px] font-semibold bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded border border-slate-200">
+                8 Desks Active
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-mono bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-slate-800 font-medium flex items-center space-x-1.5">
-              <Server className="w-3.5 h-3.5 text-slate-500" />
-              <span>Gateway: Healthy</span>
-            </span>
+          <div className="text-[11px] text-slate-500 font-mono flex items-center space-x-2">
+            <span>Nairobi East & West Ingress</span>
+            <span>•</span>
+            <span className="text-emerald-700 font-semibold">Broker p95: 22ms</span>
           </div>
         </div>
 
-        {/* Operations Core 9 Modules Ribbon */}
-        <div className="flex items-center space-x-1 pt-2.5 overflow-x-auto text-xs pb-1">
+        {/* Operations Core 8 Desks Ribbon */}
+        <div className="flex items-center space-x-1 pt-2 overflow-x-auto text-xs pb-0.5">
           <button
             onClick={() => setCurrentPage('orders')}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
@@ -251,23 +258,6 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
           </button>
 
           <button
-            onClick={() => setCurrentPage('products')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              currentPage === 'products'
-                ? 'bg-slate-900 text-white font-semibold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Products</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              currentPage === 'products' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
-            }`}>
-              {PRODUCTS.length} SKUs
-            </span>
-          </button>
-
-          <button
             onClick={() => setCurrentPage('payments')}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
               currentPage === 'payments' || currentPage === 'reconciliation'
@@ -315,23 +305,6 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
               currentPage === 'issues' ? 'bg-white text-slate-900' : 'bg-rose-100 text-rose-800'
             }`}>
               {orders.filter(o => o.deliveryException || o.status === 'FAILED' || o.status === 'CANCELLED' || o.status === 'REFUNDED').length || 3}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setCurrentPage('search_analytics')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              currentPage === 'search_analytics'
-                ? 'bg-slate-900 text-white font-semibold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Search className="w-3.5 h-3.5" />
-            <span>Search Analytics</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              currentPage === 'search_analytics' ? 'bg-white text-slate-900' : 'bg-slate-100 text-slate-700'
-            }`}>
-              38ms
             </span>
           </button>
 
@@ -424,6 +397,17 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
               >
                 Delivered
               </button>
+              <button
+                onClick={() => setOrderStateFilter('EXCEPTIONAL')}
+                className={`px-2.5 py-1 rounded font-medium transition-colors flex items-center space-x-1 ${
+                  orderStateFilter === 'EXCEPTIONAL' ? 'bg-rose-50 text-rose-800 font-semibold shadow-2xs border border-rose-200' : 'text-rose-700 hover:text-rose-900'
+                }`}
+              >
+                <span>Exceptional</span>
+                <span className="text-[10px] bg-rose-200 text-rose-900 px-1 py-0.2 rounded-full font-mono font-bold">
+                  {exceptionalCount}
+                </span>
+              </button>
             </div>
           </div>
 
@@ -457,11 +441,15 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase border inline-block ${
                           order.status === 'DELIVERED'
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : order.status === 'FAILED'
+                          : order.status === 'FAILED'
                             ? 'bg-rose-50 text-rose-800 border-rose-200'
-                            : order.status === 'REFUNDED'
+                          : order.status === 'CANCELLED'
+                            ? 'bg-slate-200 text-slate-800 border-slate-300 font-bold'
+                          : order.status === 'REFUNDED'
                             ? 'bg-purple-50 text-purple-800 border-purple-200'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                          : order.status === 'PARTIALLY_FULFILLED'
+                            ? 'bg-amber-50 text-amber-900 border-amber-300 font-bold'
+                          : 'bg-slate-100 text-slate-700 border-slate-200'
                         }`}>
                           {order.status.replace(/_/g, ' ')}
                         </span>
@@ -502,7 +490,7 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
                           </button>
                         )}
 
-                        {['FAILED', 'CANCELLED'].includes(order.status) && !order.refundRecord && onInitiateRefund && (
+                        {['FAILED', 'CANCELLED', 'PARTIALLY_FULFILLED'].includes(order.status) && !order.refundRecord && onInitiateRefund && (
                           <button
                             onClick={() => setSelectedOrderForRefund(order)}
                             className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 text-xs px-2 py-1 rounded font-semibold transition-colors cursor-pointer"
@@ -862,143 +850,513 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* MODULE 6: M-PESA PAYMENTS & FINANCIAL LEDGER (FR-FIN-001 - 008)           */}
+      {/* MODULE 6: M-PESA PAYMENTS & FINANCIAL LEDGER (SECTION 26 SPECIFICATION)   */}
       {/* ========================================================================= */}
-      {(currentPage === 'payments' || currentPage === 'reconciliation') && (
-        <div className="space-y-4">
-          {/* Financial KPI Ribbon */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
-              <span className="text-[10px] text-slate-400 block font-medium uppercase">M-Pesa Captured Volume</span>
-              <span className="text-base font-bold text-emerald-800 font-mono">
-                KES {(totalGMV).toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-500 block">Paybill 889100 Verified</span>
-            </div>
+      {(currentPage === 'payments' || currentPage === 'reconciliation') && (() => {
+        const transactionsList: PaymentTransaction[] = (paymentTransactions && paymentTransactions.length > 0)
+          ? paymentTransactions
+          : (paymentRecords && paymentRecords.length > 0)
+          ? (paymentRecords as PaymentTransaction[])
+          : [];
 
-            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
-              <span className="text-[10px] text-slate-400 block font-medium uppercase">STK Callback SLA</span>
-              <span className="text-base font-bold text-slate-900 font-mono">
-                1.4s p95
-              </span>
-              <span className="text-[10px] text-emerald-700 block font-medium">Zero timeout drops</span>
-            </div>
+        const paymentsList: Payment[] = (payments && payments.length > 0)
+          ? payments
+          : [];
 
-            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
-              <span className="text-[10px] text-slate-400 block font-medium uppercase">Ledger Reconciliation</span>
-              <span className="text-base font-bold text-slate-900 font-mono">
-                100%
-              </span>
-              <span className="text-[10px] text-slate-500 block">Automated bank matching</span>
-            </div>
+        const totalCapturedVolume = transactionsList
+          .filter(t => t.status === 'SUCCESS')
+          .reduce((acc, t) => acc + t.amount, 0) || totalGMV;
 
-            <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
-              <span className="text-[10px] text-slate-400 block font-medium uppercase">Total Reversals / Refunds</span>
-              <span className="text-base font-bold text-rose-800 font-mono">
-                {orders.filter(o => o.refundRecord || o.status === 'REFUNDED').length} Orders
-              </span>
-              <span className="text-[10px] text-rose-700 block font-medium">B2C API Reversals</span>
-            </div>
-          </div>
+        const totalReversals = transactionsList.filter(t => t.status === 'REVERSED');
+        const totalReversedKES = totalReversals.reduce((acc, t) => acc + t.amount, 0);
+        const totalFailedAttempts = transactionsList.filter(t => t.status === 'FAILED').length;
 
-          {/* Daraja Callback Stream & Reconciliation Table */}
-          <div className="bg-white border border-slate-200 rounded-md p-4 space-y-3 shadow-2xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-2">
-                  <DollarSign className="w-4 h-4 text-emerald-600" />
-                  <span>Safaricom Daraja STK Push & Webhook Reconciliation Log</span>
-                </h3>
-                <p className="text-[11px] text-slate-500">
-                  Real-time synchronization between Safaricom Daraja API callbacks and internal WAYNO order ledger (FR-FIN-001 to FR-FIN-008).
-                </p>
+        // Filter transactions
+        const filteredTransactions = transactionsList.filter((txn) => {
+          const matchesStatus = ledgerStatusFilter === 'ALL' || txn.status === ledgerStatusFilter;
+          const q = ledgerSearchQuery.trim().toLowerCase();
+          const matchesQuery = !q || 
+            txn.id.toLowerCase().includes(q) ||
+            txn.orderId.toLowerCase().includes(q) ||
+            (txn.paymentId && txn.paymentId.toLowerCase().includes(q)) ||
+            (txn.providerReference && txn.providerReference.toLowerCase().includes(q)) ||
+            (txn.phoneNumber && txn.phoneNumber.includes(q)) ||
+            (txn.failureReason && txn.failureReason.toLowerCase().includes(q));
+          return matchesStatus && matchesQuery;
+        });
+
+        // Filter parent payments
+        const filteredPayments = paymentsList.filter((pay) => {
+          const matchesStatus = ledgerStatusFilter === 'ALL' || 
+            (ledgerStatusFilter === 'SUCCESS' && pay.status === 'PAID') ||
+            (ledgerStatusFilter === 'REVERSED' && pay.status === 'REFUNDED') ||
+            pay.status === ledgerStatusFilter;
+          const q = ledgerSearchQuery.trim().toLowerCase();
+          const matchesQuery = !q ||
+            pay.id.toLowerCase().includes(q) ||
+            pay.orderId.toLowerCase().includes(q) ||
+            pay.provider.toLowerCase().includes(q) ||
+            (pay.latestTransactionId && pay.latestTransactionId.toLowerCase().includes(q));
+          return matchesStatus && matchesQuery;
+        });
+
+        return (
+          <div className="space-y-4">
+            {/* Financial KPI Ribbon */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium uppercase">M-Pesa Inflow (Captured)</span>
+                <span className="text-base font-bold text-emerald-800 font-mono">
+                  KES {totalCapturedVolume.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-slate-500 block">Validated via Daraja STK Push</span>
               </div>
 
-              <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded font-semibold self-start sm:self-auto">
-                Webhook Sync: Active (TLS 1.3)
-              </span>
+              <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium uppercase">Granular Transactions</span>
+                <span className="text-base font-bold text-slate-900 font-mono">
+                  {transactionsList.length} Transactions
+                </span>
+                <span className="text-[10px] text-slate-500 block">Across {paymentsList.length || orders.length} Parent Commitments</span>
+              </div>
+
+              <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium uppercase">Reversals & Refunds</span>
+                <span className="text-base font-bold text-rose-800 font-mono">
+                  {totalReversals.length} Reversals
+                </span>
+                <span className="text-[10px] text-rose-700 block font-medium">KES {totalReversedKES.toLocaleString()} via B2C API</span>
+              </div>
+
+              <div className="bg-white p-3 rounded border border-slate-200 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium uppercase">Audit Reconciliation</span>
+                <span className="text-base font-bold text-slate-900 font-mono">
+                  100% Matched
+                </span>
+                <span className="text-[10px] text-emerald-700 block font-medium">Zero orphan callbacks</span>
+              </div>
             </div>
 
-            <div className="border border-slate-200 rounded overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-900">
-                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-                  <tr>
-                    <th className="py-2.5 px-3">Order Ref</th>
-                    <th className="py-2.5 px-3">Retail Duka</th>
-                    <th className="py-2.5 px-3">MSISDN</th>
-                    <th className="py-2.5 px-3">Amount</th>
-                    <th className="py-2.5 px-3">Daraja Status</th>
-                    <th className="py-2.5 px-3">Reconciliation</th>
-                    <th className="py-2.5 px-3 text-right">Audit / Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {orders.map((order) => {
-                    const isRefunded = order.status === 'REFUNDED' || !!order.refundRecord;
-                    const isPaid = order.status !== 'CREATED' && order.status !== 'PAYMENT_PENDING';
-                    const darajaCode = isRefunded ? 'REV-992' : isPaid ? '0 (Success)' : 'PENDING';
+            {/* Section 25 & 26 Architecture Dual Ribbon */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+              {/* Section 25: Payment Architecture Abstraction */}
+              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-md p-3.5 shadow-2xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[10px] font-mono font-bold bg-blue-100 text-blue-900 border border-blue-200 px-1.5 py-0.5 rounded">
+                      SECTION 25
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-900">Payment Architecture Abstraction</h4>
+                  </div>
+                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                    Decoupled
+                  </span>
+                </div>
 
-                    return (
-                      <tr key={order.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                          {order.id}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="font-semibold text-slate-900 block">{order.shopName}</span>
-                          <span className="text-[10px] text-slate-400">{order.wholesalerName}</span>
-                        </td>
-                        <td className="py-2.5 px-3 font-mono text-slate-600">
-                          {order.shopOwnerPhone}
-                        </td>
-                        <td className="py-2.5 px-3 font-mono font-semibold text-slate-900">
-                          KES {order.totalAmount.toLocaleString()}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${
-                            isRefunded
-                              ? 'bg-purple-50 text-purple-800 border-purple-200'
-                              : isPaid
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-amber-50 text-amber-800 border-amber-200'
-                          }`}>
-                            {darajaCode}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded uppercase ${
-                            isRefunded
-                              ? 'bg-purple-100 text-purple-900'
-                              : isPaid
-                              ? 'bg-emerald-100 text-emerald-900'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {isRefunded ? 'REVERSED' : isPaid ? 'MATCHED' : 'UNPAID'}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right">
-                          {isPaid && !isRefunded && onInitiateRefund && (
-                            <button
-                              onClick={() => setSelectedOrderForRefund(order)}
-                              className="text-[10px] font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded transition-colors cursor-pointer"
-                            >
-                              Refund
-                            </button>
-                          )}
-                          {isRefunded && (
-                            <span className="text-[10px] font-mono text-slate-500">
-                              {order.refundRecord?.reversalTransactionId || 'REVERSED'}
-                            </span>
-                          )}
-                        </td>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  The application does not directly depend on M-Pesa. All checkout calls and refunds interact strictly with <code className="text-blue-700 font-mono font-semibold">PaymentService</code>, which dynamically routes requests to registered providers.
+                </p>
+
+                {/* Visual Tree matching the specification diagram */}
+                <div className="bg-slate-900 text-slate-200 p-2.5 rounded font-mono text-[11px] leading-snug border border-slate-800">
+                  <div className="text-emerald-400 font-bold">PaymentService</div>
+                  <div className="text-slate-500">│</div>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-slate-500">├──</span>
+                    <span className="text-amber-300 font-bold">MPesaProvider</span>
+                    <span className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.2 rounded">Daraja C2B/B2C</span>
+                  </div>
+                  <div className="text-slate-500">│</div>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-slate-500">└──</span>
+                    <span className="text-cyan-300 font-bold">FutureProvider</span>
+                    <span className="text-[9px] bg-slate-800 text-slate-400 px-1 py-0.2 rounded">Airtel, Card, Bank</span>
+                  </div>
+                </div>
+
+                <div className="text-[10px] text-slate-500 flex items-center justify-between pt-1">
+                  <span>Registered Providers: {paymentService.listRegisteredProviders().length} Active</span>
+                  <span className="font-mono text-slate-700">App → PaymentService → Provider</span>
+                </div>
+              </div>
+
+              {/* Section 26 Specification Architecture Banner */}
+              <div className="lg:col-span-7 bg-slate-900 text-white rounded-md p-3.5 shadow-sm border border-slate-800 flex flex-col justify-between">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-[10px] font-mono font-bold bg-emerald-400 text-slate-950 px-2 py-0.5 rounded">
+                        SECTION 26
+                      </span>
+                      <span className="text-xs font-semibold text-slate-200">Two-Tier Payment & Audit Ledger</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700 flex items-center space-x-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span>Daraja TLS 1.3</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Rather than relying solely on <code className="text-emerald-300 font-mono text-[11px]">order.payment_status = PAID</code>, WAYNO maintains a persistent relational ledger separating the parent <code className="text-blue-300 font-mono text-[11px]">payments</code> entity from granular <code className="text-amber-300 font-mono text-[11px]">payment_transactions</code> child records. Each STK attempt, callback confirmation, cancellation, and reversal tracks exact provider references and failure reasons for definitive financial reconciliation.
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                  <span>Parent: payments ({paymentsList.length || orders.length})</span>
+                  <span>Child: payment_transactions ({transactionsList.length})</span>
+                  <span className="text-emerald-400">Status: 100% Reconciled</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ledger Main Table Container */}
+            <div className="bg-white border border-slate-200 rounded-md p-4 space-y-3.5 shadow-2xs">
+              {/* Top View Selector & Search Controls */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                {/* Two-tier toggle tabs */}
+                <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-md">
+                  <button
+                    id="ledger-tab-transactions"
+                    onClick={() => setLedgerViewTab('transactions')}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                      ledgerViewTab === 'transactions'
+                        ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>payment_transactions (Child Audit Records)</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                      ledgerViewTab === 'transactions' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {transactionsList.length}
+                    </span>
+                  </button>
+
+                  <button
+                    id="ledger-tab-payments"
+                    onClick={() => setLedgerViewTab('payments')}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                      ledgerViewTab === 'payments'
+                        ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <DollarSign className="w-3.5 h-3.5 text-blue-600" />
+                    <span>payments (Parent Order Entities)</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                      ledgerViewTab === 'payments' ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {paymentsList.length || orders.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Search Bar */}
+                <div className="flex items-center space-x-2">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search order, payment, receipt..."
+                      value={ledgerSearchQuery}
+                      onChange={(e) => setLedgerSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1 text-xs border border-slate-300 rounded focus:border-slate-800 focus:outline-none"
+                    />
+                  </div>
+                  {ledgerSearchQuery && (
+                    <button
+                      onClick={() => setLedgerSearchQuery('')}
+                      className="text-xs text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Status Filter Chips */}
+              <div className="flex items-center space-x-1.5 overflow-x-auto text-xs pb-1">
+                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1 flex items-center space-x-1">
+                  <Filter className="w-3 h-3 text-slate-400" />
+                  <span>Filter:</span>
+                </span>
+                {(['ALL', 'SUCCESS', 'REVERSED', 'FAILED', 'INITIATED'] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => setLedgerStatusFilter(st)}
+                    className={`px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-[11px] ${
+                      ledgerStatusFilter === st
+                        ? 'bg-slate-900 text-white font-semibold'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {st === 'ALL' ? 'All Records' : st}
+                    {st === 'FAILED' && totalFailedAttempts > 0 && (
+                      <span className="ml-1 text-[9px] bg-rose-500 text-white px-1 py-0.2 rounded-full font-bold">
+                        {totalFailedAttempts}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* TABLE VIEW: payment_transactions (Child Audit Ledger) */}
+              {ledgerViewTab === 'transactions' && (
+                <div className="border border-slate-200 rounded overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-900">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3">Transaction ID & Payment ID</th>
+                        <th className="py-2.5 px-3">Order Ref</th>
+                        <th className="py-2.5 px-3">Provider & Reference</th>
+                        <th className="py-2.5 px-3">Amount</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">Initiated / Completed</th>
+                        <th className="py-2.5 px-3">Failure Reason / Notes</th>
+                        <th className="py-2.5 px-3">Reconciliation</th>
+                        <th className="py-2.5 px-3 text-right">Audit Action</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                      {filteredTransactions.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                            No payment transaction records match the specified filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredTransactions.map((txn) => {
+                          const isSuccess = txn.status === 'SUCCESS';
+                          const isReversed = txn.status === 'REVERSED';
+                          const isFailed = txn.status === 'FAILED';
+                          const isInitiated = txn.status === 'INITIATED';
+
+                          const latencyMs = txn.completedAt && txn.initiatedAt 
+                            ? Math.max(0, new Date(txn.completedAt).getTime() - new Date(txn.initiatedAt).getTime())
+                            : null;
+
+                          return (
+                            <tr key={txn.id} className="hover:bg-slate-50 transition-colors">
+                              {/* Transaction ID & Parent Payment ID */}
+                              <td className="py-2.5 px-3">
+                                <span className="font-mono font-semibold text-slate-900 block text-[11px]">{txn.id}</span>
+                                <span className="text-[10px] font-mono text-slate-500 flex items-center space-x-1">
+                                  <span className="text-slate-400">parent:</span>
+                                  <span className="text-blue-700 font-semibold">{txn.paymentId}</span>
+                                </span>
+                              </td>
+
+                              {/* Order Ref */}
+                              <td className="py-2.5 px-3 font-mono font-semibold text-slate-800">
+                                {txn.orderId}
+                              </td>
+
+                              {/* Provider & Provider Reference (Daraja Receipt) */}
+                              <td className="py-2.5 px-3">
+                                <span className="font-semibold text-slate-800 block text-[11px]">{txn.provider}</span>
+                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border inline-block ${
+                                  isReversed
+                                    ? 'bg-purple-50 text-purple-900 border-purple-200'
+                                    : isFailed
+                                    ? 'bg-rose-50 text-rose-900 border-rose-200'
+                                    : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                                }`}>
+                                  {txn.providerReference}
+                                </span>
+                              </td>
+
+                              {/* Amount & Currency */}
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                                {txn.currency} {txn.amount.toLocaleString()}
+                              </td>
+
+                              {/* Status */}
+                              <td className="py-2.5 px-3">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                  isSuccess
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : isReversed
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : isFailed
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {txn.status}
+                                </span>
+                              </td>
+
+                              {/* Timestamps */}
+                              <td className="py-2.5 px-3 text-[10px] font-mono text-slate-600">
+                                <span className="block">{new Date(txn.initiatedAt).toLocaleTimeString()}</span>
+                                {txn.completedAt && (
+                                  <span className="text-slate-400 block">
+                                    Done: {new Date(txn.completedAt).toLocaleTimeString()}
+                                    {latencyMs !== null && ` (+${(latencyMs / 1000).toFixed(1)}s)`}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Failure Reason / Operational Notes */}
+                              <td className="py-2.5 px-3 text-xs max-w-xs">
+                                {txn.failureReason ? (
+                                  <span className="text-[11px] text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 font-medium block">
+                                    {txn.failureReason}
+                                  </span>
+                                ) : isSuccess ? (
+                                  <span className="text-[11px] text-emerald-700 font-medium">
+                                    STK callback validated
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 italic">
+                                    Pending callback
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Reconciliation State */}
+                              <td className="py-2.5 px-3">
+                                <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded ${
+                                  txn.reconciliationState === 'MATCHED'
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : txn.reconciliationState === 'REFUNDED'
+                                    ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}>
+                                  {txn.reconciliationState || 'MATCHED'}
+                                </span>
+                              </td>
+
+                              {/* Audit Action */}
+                              <td className="py-2.5 px-3 text-right">
+                                <button
+                                  onClick={() => setSelectedTxnForAudit(txn)}
+                                  className="text-[10px] font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-2 py-1 rounded transition-colors cursor-pointer"
+                                >
+                                  Inspect Audit
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* TABLE VIEW: payments (Parent Order Entities) */}
+              {ledgerViewTab === 'payments' && (
+                <div className="border border-slate-200 rounded overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-900">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                      <tr>
+                        <th className="py-2.5 px-3">Payment ID (Parent)</th>
+                        <th className="py-2.5 px-3">Order Ref</th>
+                        <th className="py-2.5 px-3">Amount</th>
+                        <th className="py-2.5 px-3">Payment Status</th>
+                        <th className="py-2.5 px-3">Transaction Count</th>
+                        <th className="py-2.5 px-3">Latest Txn Ref</th>
+                        <th className="py-2.5 px-3">Reconciliation Status</th>
+                        <th className="py-2.5 px-3">Created / Updated</th>
+                        <th className="py-2.5 px-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans">
+                      {filteredPayments.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                            No parent payment records match the specified filters.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredPayments.map((pay) => {
+                          const isPaid = pay.status === 'PAID';
+                          const isRefunded = pay.status === 'REFUNDED';
+                          const matchingOrder = orders.find(o => o.id === pay.orderId);
+
+                          return (
+                            <tr key={pay.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="py-2.5 px-3 font-mono font-semibold text-blue-700">
+                                {pay.id}
+                              </td>
+
+                              <td className="py-2.5 px-3">
+                                <span className="font-mono font-semibold text-slate-900 block">{pay.orderId}</span>
+                                {matchingOrder && (
+                                  <span className="text-[10px] text-slate-500 truncate block max-w-xs">
+                                    {matchingOrder.shopName}
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="py-2.5 px-3 font-mono font-bold text-slate-900">
+                                {pay.currency} {pay.amount.toLocaleString()}
+                              </td>
+
+                              <td className="py-2.5 px-3">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                  isPaid
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : isRefunded
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}>
+                                  {pay.status}
+                                </span>
+                              </td>
+
+                              <td className="py-2.5 px-3">
+                                <span className="font-mono text-xs font-semibold bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                  {pay.transactionCount} {pay.transactionCount === 1 ? 'attempt' : 'attempts'}
+                                </span>
+                              </td>
+
+                              <td className="py-2.5 px-3 font-mono text-[11px] text-slate-700">
+                                {pay.latestTransactionId || '—'}
+                              </td>
+
+                              <td className="py-2.5 px-3">
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                                  pay.reconciliationStatus === 'RECONCILED'
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}>
+                                  {pay.reconciliationStatus}
+                                </span>
+                              </td>
+
+                              <td className="py-2.5 px-3 text-[10px] font-mono text-slate-500">
+                                <span className="block">{new Date(pay.createdAt).toLocaleTimeString()}</span>
+                                <span className="text-slate-400 block">Upd: {new Date(pay.updatedAt).toLocaleTimeString()}</span>
+                              </td>
+
+                              <td className="py-2.5 px-3 text-right">
+                                {isPaid && !isRefunded && onInitiateRefund && matchingOrder && (
+                                  <button
+                                    onClick={() => setSelectedOrderForRefund(matchingOrder)}
+                                    className="text-[10px] font-semibold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-1 rounded transition-colors cursor-pointer"
+                                  >
+                                    Refund
+                                  </button>
+                                )}
+                                {isRefunded && (
+                                  <span className="text-[10px] font-mono text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                                    Reversed
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================================= */}
       {/* MODULE 2: RETAILERS (SHOP DIRECTORY & CREDIT FACILITIES)                  */}
@@ -1056,6 +1414,160 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
       {/* ========================================================================= */}
       {currentPage === 'search_analytics' && (
         <SearchAnalyticsDesk events={events} />
+      )}
+
+      {/* ========================================================================= */}
+      {/* SECTION 26: TRANSACTION AUDIT INSPECTOR MODAL                             */}
+      {/* ========================================================================= */}
+      {selectedTxnForAudit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-in fade-in">
+          <div className="bg-white border border-slate-300 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5 text-slate-900 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-sm text-slate-900">
+                    Payment Transaction Audit Record
+                  </h4>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    ID: {selectedTxnForAudit.id} · Provider Ref: {selectedTxnForAudit.providerReference || 'N/A'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedTxnForAudit(null)}
+                className="text-slate-400 hover:text-slate-700 text-lg font-bold px-2 py-1 rounded cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Section 26 Tracked Specification Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-md border border-slate-200 text-xs">
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">payment_id (Parent)</span>
+                <span className="font-mono font-bold text-blue-700 text-[11px]">{selectedTxnForAudit.paymentId}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">order_id</span>
+                <span className="font-mono font-bold text-slate-900 text-[11px]">{selectedTxnForAudit.orderId}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">provider</span>
+                <span className="font-semibold text-slate-900 text-[11px]">{selectedTxnForAudit.provider}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">provider_reference</span>
+                <span className="font-mono font-bold text-emerald-800 text-[11px]">{selectedTxnForAudit.providerReference}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">amount & currency</span>
+                <span className="font-mono font-bold text-slate-900 text-[11px]">
+                  {selectedTxnForAudit.currency} {selectedTxnForAudit.amount.toLocaleString()}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">status</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider inline-block ${
+                  selectedTxnForAudit.status === 'SUCCESS'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : selectedTxnForAudit.status === 'REVERSED'
+                    ? 'bg-purple-100 text-purple-800'
+                    : selectedTxnForAudit.status === 'FAILED'
+                    ? 'bg-rose-100 text-rose-800'
+                    : 'bg-amber-100 text-amber-800'
+                }`}>
+                  {selectedTxnForAudit.status}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">initiated_at</span>
+                <span className="font-mono text-[10px] text-slate-600">
+                  {new Date(selectedTxnForAudit.initiatedAt).toLocaleString()}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">completed_at</span>
+                <span className="font-mono text-[10px] text-slate-600">
+                  {selectedTxnForAudit.completedAt ? new Date(selectedTxnForAudit.completedAt).toLocaleString() : 'In-flight'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold uppercase block">reconciliation_state</span>
+                <span className="font-mono text-[10px] text-slate-800 font-semibold">
+                  {selectedTxnForAudit.reconciliationState || 'MATCHED'}
+                </span>
+              </div>
+            </div>
+
+            {/* Failure Reason / Reversal Details */}
+            {selectedTxnForAudit.failureReason && (
+              <div className="bg-rose-50 border border-rose-200 rounded p-3 text-xs text-rose-900 space-y-1">
+                <span className="font-bold text-rose-800 flex items-center space-x-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Recorded failure_reason (Reconciliation Exception):</span>
+                </span>
+                <p className="font-mono text-[11px] leading-relaxed">
+                  {selectedTxnForAudit.failureReason}
+                </p>
+              </div>
+            )}
+
+            {/* Raw JSON Webhook Payload */}
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Raw Daraja C2B / B2C Callback Payload (Idempotency Audit):
+              </span>
+              <pre className="bg-slate-900 text-slate-200 p-3 rounded text-[10px] font-mono overflow-x-auto max-h-48 border border-slate-800 leading-relaxed">
+                {JSON.stringify({
+                  TransactionType: selectedTxnForAudit.status === 'REVERSED' ? 'Reversal Result' : 'CustomerPayBillOnline',
+                  TransID: selectedTxnForAudit.providerReference,
+                  TransTime: selectedTxnForAudit.completedAt || selectedTxnForAudit.initiatedAt,
+                  TransAmount: selectedTxnForAudit.amount,
+                  BusinessShortCode: '889100',
+                  BillRefNumber: selectedTxnForAudit.orderId,
+                  MSISDN: selectedTxnForAudit.phoneNumber || '254712345678',
+                  ResultCode: selectedTxnForAudit.status === 'SUCCESS' ? 0 : selectedTxnForAudit.status === 'REVERSED' ? 0 : 1032,
+                  ResultDesc: selectedTxnForAudit.failureReason || 'The service request is processed successfully.',
+                  ReconciliationState: selectedTxnForAudit.reconciliationState,
+                  IdempotencyKey: selectedTxnForAudit.idempotencyKey || `idemp_${selectedTxnForAudit.id}`,
+                  ParentPaymentId: selectedTxnForAudit.paymentId
+                }, null, 2)}
+              </pre>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
+              <div className="text-[11px] text-slate-400 font-mono">
+                TLS 1.3 Signature: Verified (SHA-256)
+              </div>
+              <div className="flex items-center space-x-2">
+                {selectedTxnForAudit.status === 'SUCCESS' && onInitiateRefund && (
+                  <button
+                    onClick={() => {
+                      const matchedOrder = orders.find(o => o.id === selectedTxnForAudit.orderId);
+                      if (matchedOrder) {
+                        setSelectedOrderForRefund(matchedOrder);
+                      }
+                      setSelectedTxnForAudit(null);
+                    }}
+                    className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 px-3 py-1.5 rounded font-semibold transition-colors cursor-pointer"
+                  >
+                    Initiate B2C Reversal
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedTxnForAudit(null)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded font-semibold transition-colors cursor-pointer"
+                >
+                  Close Audit Inspector
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

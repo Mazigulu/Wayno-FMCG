@@ -803,6 +803,12 @@ export function getExtendedSearchAnalytics(): ExtendedAnalyticsMetrics {
 // 7. MULTI-FACTOR RANKING & EXECUTION ENGINE
 // ---------------------------------------------------------------------------
 
+let monotonicSearchSequence = 0;
+
+export function isStaleSearchResponse(responseSeqId: number, latestAcceptedSeqId: number): boolean {
+  return responseSeqId < latestAcceptedSeqId;
+}
+
 export interface WaynoSearchOptions {
   userLat?: number;
   userLng?: number;
@@ -1454,6 +1460,7 @@ export function executeWaynoSearch(
     indexMetrics,
     synonymsApplied,
     fuzzyMatches,
+    sequenceId: ++monotonicSearchSequence,
   };
 
   // Log to search analytics

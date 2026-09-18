@@ -120,7 +120,7 @@ export function extractRetailerSignals(
   }
 
   // 2. Purchases Signal (from past and active orders)
-  const shopOrders = orders.filter(o => o.retailerShopId === shop.id || !o.retailerShopId);
+  const shopOrders = orders.filter(o => o.retailerId === shop.retailerId || o.shopName === shop.name || !o.retailerId);
   const purchaseCounts: Record<string, number> = {};
   shopOrders.forEach(order => {
     order.items.forEach(item => {
@@ -215,6 +215,12 @@ export function extractRetailerSignals(
   };
 }
 
+export interface RecommendationExecutionOptions {
+  enableExploration?: boolean;
+  epsilon?: number;
+  impressionCounts?: Record<string, number>;
+}
+
 /**
  * Executes the 5-signal recommendation model for a retailer shop
  */
@@ -224,7 +230,8 @@ export function generateRetailerRecommendations(
   orders: Order[],
   weightsOverride?: Partial<RecommendationEngineWeights>,
   simulatedHour?: number,
-  simulatedDay?: string
+  simulatedDay?: string,
+  options?: RecommendationExecutionOptions
 ): RecommendationExecutionResult {
   const startTime = performance.now();
   const weights: RecommendationEngineWeights = {
@@ -343,15 +350,21 @@ export function generateRetailerRecommendations(
     preferenceScore = Math.min(100, Math.max(15, Math.round(preferenceScore)));
 
     // =========================================================================
-    // COMPOSITE WEIGHTED SCORE (0 - 100)
+    // COMPOSITE WEIGHTED SCORE (0 - 100) WITH FATIGUE DECAY
     // =========================================================================
-    const compositeScore = Math.round(
+    let compositeScore = Math.round(
       (searchScore * weights.historicalSearches) +
       (purchaseScore * weights.purchases) +
       (locationScore * weights.location) +
       (timeScore * weights.time) +
       (preferenceScore * weights.productPreferences)
     );
+
+    // Production Hardening: Fatigue penalty for repeated impressions without clicks
+    if (options?.impressionCounts && options.impressionCounts[product.id]) {
+      const fatigueDiscount = Math.min(25, options.impressionCounts[product.id] * 5);
+      compositeScore = Math.max(5, compositeScore - fatigueDiscount);
+    }
 
     // Determine primary driver
     const signalContributions = [
@@ -427,6 +440,28 @@ export function generateRetailerRecommendations(
 
   // Sort by composite score descending
   candidateRecommendations.sort((a, b) => b.scoreBreakdown.compositeScore - a.scoreBreakdown.compositeScore);
+
+  // Production Hardening: Epsilon-Greedy Diversity Injection
+  // If top 3 items are all from the exact same category, inject a diverse exploratory SKU into position 3
+  if (options?.enableExploration && candidateRecommendations.length >= 4) {
+    const topCat = candidateRecommendations[0].product.internalCategory;
+    const isUniformTop3 = candidateRecommendations.slice(0, 3).every(
+      (item) => item.product.internalCategory === topCat
+    );
+
+    if (isUniformTop3) {
+      const exploratoryIndex = candidateRecommendations.findIndex(
+        (item, idx) => idx >= 3 && item.product.internalCategory !== topCat
+      );
+
+      if (exploratoryIndex !== -1) {
+        const [exploratoryItem] = candidateRecommendations.splice(exploratoryIndex, 1);
+        exploratoryItem.scoreBreakdown.explanationTags.unshift('Exploration: Category Diversification');
+        exploratoryItem.recommendationReason = `High-Margin Discovery: Diversifying beyond ${topCat} with fast-moving inventory.`;
+        candidateRecommendations.splice(2, 0, exploratoryItem);
+      }
+    }
+  }
 
   // Assign ranks
   candidateRecommendations.forEach((item, idx) => {

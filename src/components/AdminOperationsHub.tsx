@@ -14,9 +14,12 @@ import {
   Layers,
   BarChart3,
   Tag,
-  FolderTree
+  FolderTree,
+  Sparkles,
+  Package,
+  Network
 } from 'lucide-react';
-import { Order, TelemetryEvent, OrderState, PaymentRecord, Rider } from '../types/wayno';
+import { Order, TelemetryEvent, OrderState, PaymentRecord, Payment, PaymentTransaction, Rider } from '../types/wayno';
 import { OperationsConsole } from './OperationsConsole';
 import { DemandAnalyticsConsole } from './DemandAnalyticsConsole';
 import { MarketIntelligenceConsole } from './MarketIntelligenceConsole';
@@ -28,12 +31,16 @@ import { ArchitectureWorkspace } from './ArchitectureWorkspace';
 import { RepositoryStructureExplorer } from './RepositoryStructureExplorer';
 import { DatabaseIndexingConsole } from './DatabaseIndexingConsole';
 import { RecommendationEngineConsole } from './RecommendationEngineConsole';
+import { ProductsMasterCatalog } from './operations/ProductsMasterCatalog';
+import { SupplyNodeTreeVisualizer } from './hierarchical/SupplyNodeTreeVisualizer';
 
-export type AdminSubTab = 'operations' | 'demand' | 'intelligence' | 'promotions' | 'benchmark' | 'rules' | 'nfr' | 'architecture' | 'repository' | 'database' | 'recommendations';
+export type AdminSubTab = 'operations' | 'products' | 'geofence' | 'demand' | 'intelligence' | 'promotions' | 'benchmark' | 'rules' | 'nfr' | 'architecture' | 'repository' | 'database' | 'recommendations';
 
 interface AdminOperationsHubProps {
   orders: Order[];
   events: TelemetryEvent[];
+  payments?: Payment[];
+  paymentTransactions?: PaymentTransaction[];
   paymentRecords?: PaymentRecord[];
   onManualOverrideStatus: (orderId: string, newState: OrderState, note: string) => void;
   onReassignRider?: (orderId: string, newRider: Rider, reason: string) => void;
@@ -44,6 +51,8 @@ interface AdminOperationsHubProps {
 export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
   orders,
   events,
+  payments = [],
+  paymentTransactions = [],
   paymentRecords = [],
   onManualOverrideStatus,
   onReassignRider,
@@ -56,6 +65,8 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
   // Determine active sub-tab from current route or props
   const resolveTabFromPath = (): AdminSubTab => {
     const path = location.pathname;
+    if (path.includes('/geofence') || path.includes('/supply-nodes') || path.includes('/nodes')) return 'geofence';
+    if (path.includes('/products') || path.includes('/catalog')) return 'products';
     if (path.includes('/promo') || path.includes('/placement') || path.includes('/ads')) return 'promotions';
     if (path.includes('/intelligence') || path.includes('/market') || path.includes('/pipeline')) return 'intelligence';
     if (path.includes('/demand') || path.includes('/forecast') || path.includes('/analytics')) return 'demand';
@@ -64,13 +75,13 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
     if (path.includes('/nfr') || path.includes('/non-functional') || path.includes('/requirements')) return 'nfr';
     if (path.includes('/architecture') || path.includes('/flows') || path.includes('/navigation')) return 'architecture';
     if (path.includes('/repo') || path.includes('/repository') || path.includes('/monorepo')) return 'repository';
+    if (path.includes('/recommend') || path.includes('/recommendations')) return 'recommendations';
     if (path.includes('/database') || path.includes('/indexes') || path.includes('/indexing') || path.includes('/postgis') || path.includes('/sql')) return 'database';
     if (
       path.includes('/operations') || 
       path.includes('/retailers') || 
       path.includes('/wholesalers') || 
       path.includes('/riders') || 
-      path.includes('/products') || 
       path.includes('/payments') || 
       path.includes('/deliveries') || 
       path.includes('/issues') || 
@@ -128,11 +139,11 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
                 </h1>
                 <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center space-x-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>8 Modules Consolidated</span>
+                  <span>12 Enterprise Modules</span>
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 truncate max-w-xs sm:max-w-xl">
-                Unified administration: Live Dispatch & Telemetry · FMCG Demand Analytics · Market Intelligence Pipeline · Promotional Placements · Search Benchmark · Business Rules · NFR Audits · Architecture
+                Unified administration: Live Dispatch & Telemetry · Master Catalog · Demand Analytics · Market Intelligence · Promotions · Search & SLA Benchmark · Recommendations · Business Rules · NFRs · Architecture · Database · Monorepo
               </p>
             </div>
           </div>
@@ -176,6 +187,44 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
               activeTab === 'operations' ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-800'
             }`}>
               {activeOrdersCount} Active
+            </span>
+          </button>
+
+          {/* 1B. Product Management (Section 13) */}
+          <button
+            id="admin-tab-products"
+            onClick={() => handleTabChange('products')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              activeTab === 'products'
+                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5 text-blue-400" />
+            <span>Product Management (Sec 13)</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              activeTab === 'products' ? 'bg-white text-slate-900' : 'bg-blue-100 text-blue-800'
+            }`}>
+              Master Catalog
+            </span>
+          </button>
+
+          {/* 1C. Geographic Supply Nodes & Geofencing */}
+          <button
+            id="admin-tab-geofence"
+            onClick={() => handleTabChange('geofence')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              activeTab === 'geofence'
+                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Network className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Supply Node Tree</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              activeTab === 'geofence' ? 'bg-white text-slate-900' : 'bg-emerald-100 text-emerald-800'
+            }`}>
+              20 km Nodes
             </span>
           </button>
 
@@ -247,11 +296,11 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
             }`}
           >
             <Search className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Search Benchmark</span>
+            <span>Search & SLA Benchmark</span>
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
               activeTab === 'benchmark' ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-800'
             }`}>
-              16 Specs
+              16 Specs + Logs
             </span>
           </button>
 
@@ -349,21 +398,52 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
               PostGIS
             </span>
           </button>
+
+          {/* 8. 5-Signal Recommendation Engine (Section 45) */}
+          <button
+            id="admin-tab-recommendations"
+            onClick={() => handleTabChange('recommendations')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              activeTab === 'recommendations'
+                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Recommendation Engine</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+              activeTab === 'recommendations' ? 'bg-amber-400 text-slate-950' : 'bg-amber-100 text-amber-900'
+            }`}>
+              Sec 45
+            </span>
+          </button>
         </div>
       </div>
 
       {/* Render Active Merged Module */}
       <div>
         {activeTab === 'operations' && (
-          <OperationsConsole
-            orders={orders}
-            events={events}
-            paymentRecords={paymentRecords}
-            onManualOverrideStatus={onManualOverrideStatus}
-            onReassignRider={onReassignRider}
-            onInitiateRefund={onInitiateRefund}
-            initialPage={resolveOperationsPage()}
-          />
+           <OperationsConsole
+             orders={orders}
+             events={events}
+             payments={payments}
+             paymentTransactions={paymentTransactions}
+             paymentRecords={paymentRecords}
+             onManualOverrideStatus={onManualOverrideStatus}
+             onReassignRider={onReassignRider}
+             onInitiateRefund={onInitiateRefund}
+             initialPage={resolveOperationsPage()}
+           />
+        )}
+
+        {activeTab === 'products' && (
+          <ProductsMasterCatalog />
+        )}
+
+        {activeTab === 'geofence' && (
+          <div className="space-y-4">
+            <SupplyNodeTreeVisualizer orders={orders} />
+          </div>
         )}
 
         {activeTab === 'demand' && (
@@ -400,6 +480,10 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
 
         {activeTab === 'database' && (
           <DatabaseIndexingConsole />
+        )}
+
+        {activeTab === 'recommendations' && (
+          <RecommendationEngineConsole orders={orders} />
         )}
       </div>
     </div>

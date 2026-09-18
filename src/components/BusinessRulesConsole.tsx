@@ -17,6 +17,18 @@ import {
   ArrowRight,
   ShieldAlert,
   Info,
+  Network,
+  GitFork,
+  Compass,
+  Route,
+  Truck,
+  Database,
+  BrainCircuit,
+  ArrowUpRight,
+  Check,
+  X,
+  Code2,
+  Copy,
 } from 'lucide-react';
 import { DETAILED_BUSINESS_RULES } from '../data/businessRulesData';
 import { BusinessRuleSpec } from '../types/businessRules';
@@ -28,7 +40,17 @@ import {
   evaluateCancellationRefund,
   evaluateServiceZoneEligibility,
 } from '../services/businessRulesEngine';
-import { OrderState } from '../types/wayno';
+import {
+  geoEngine,
+  supplyEngine,
+  routingEngine,
+  optimizationEngine,
+  procurementIntelligence,
+  POSTGIS_SERVICE_ZONE_SCHEMA,
+  SUPPLY_NODES,
+} from '../services/hierarchicalGeofenceEngine';
+import { OrderState, VehicleRoutingStop } from '../types/wayno';
+import { HierarchicalSupplyNetworkLab } from './hierarchical/HierarchicalSupplyNetworkLab';
 
 export const BusinessRulesConsole: React.FC = () => {
   const [selectedRuleId, setSelectedRuleId] = useState<string>('rule_01_supplier_selection');
@@ -153,7 +175,86 @@ export const BusinessRulesConsole: React.FC = () => {
     return evaluateCancellationRefund(cancelOrderState, simSubtotal, simDeliveryFee, cancelledByActor);
   }, [cancelOrderState, simSubtotal, simDeliveryFee, cancelledByActor]);
 
-  // --- Interactive State 6: Service Zone Boundary Checker (Rule 14) ---
+  // --- Interactive State 6: Hierarchical Supply Network & 20 km Nodes (Rule 14) ---
+  type GeoLabTab =
+    | 'HIERARCHY_TREE'
+    | 'PROCUREMENT_SIM'
+    | 'ROUTING_VRP'
+    | 'RIDER_MANDATE'
+    | 'POSTGIS_SQL'
+    | 'ML_INTELLIGENCE';
+
+  const [geoLabTab, setGeoLabTab] = useState<GeoLabTab>('HIERARCHY_TREE');
+
+  // Procurement Simulator State
+  const [procureShopKey, setProcureShopKey] = useState<string>('shop_01');
+  const [procureProduct, setProcureProduct] = useState<string>('Jogoo Maize Meal 2kg x 12 (10 Bales)');
+  const [procureQty, setProcureQty] = useState<number>(10);
+  const [procureLocalStock, setProcureLocalStock] = useState<boolean>(false);
+  const [procureParentStock, setProcureParentStock] = useState<boolean>(true);
+  const [procureEscapeStock, setProcureEscapeStock] = useState<boolean>(true);
+
+  const sampleShops = useMemo(() => [
+    { id: 'shop_01', name: 'Mama Sarah Provision Duka', location: 'Kariobangi South', lat: -1.2585, lng: 36.8834 },
+    { id: 'shop_02', name: 'Baraka Mini Mart', location: 'Kawangware Stage 2', lat: -1.2912, lng: 36.7451 },
+    { id: 'shop_03', name: 'Zawadi Wholesome Kiosk', location: 'Industrial Area Enterprise Rd', lat: -1.3120, lng: 36.8480 },
+    { id: 'shop_04', name: 'Jirani Super Grocery', location: 'Bungoma Town Kanduyi', lat: 0.5696, lng: 34.5584 },
+  ], []);
+
+  const selectedShopObj = useMemo(() => {
+    return sampleShops.find((s) => s.id === procureShopKey) || sampleShops[0];
+  }, [sampleShops, procureShopKey]);
+
+  const procureResolution = useMemo(() => {
+    return supplyEngine.executeHierarchicalProcurement({
+      shopId: selectedShopObj.id,
+      shopName: selectedShopObj.name,
+      shopCoordinates: { lat: selectedShopObj.lat, lng: selectedShopObj.lng },
+      productId: 'prod_jogoo',
+      productName: procureProduct,
+      requestedQty: procureQty,
+      mockLocalStockAvailable: procureLocalStock,
+      mockParentStockAvailable: procureParentStock,
+      mockNearbyEscapeStockAvailable: procureEscapeStock,
+    });
+  }, [selectedShopObj, procureProduct, procureQty, procureLocalStock, procureParentStock, procureEscapeStock]);
+
+  // VRP Multi-Shop Routing Simulation State
+  const defaultVrpStops: VehicleRoutingStop[] = useMemo(() => [
+    { id: 'v_stop_1', shopName: 'Mama Sarah Duka (Kariobangi)', latitude: -1.2585, longitude: 36.8834, cargoWeightKg: 40, priority: 'HIGH', timeWindow: '08:00 - 09:30' },
+    { id: 'v_stop_2', shopName: 'Starehe Kiosk (Pangani)', latitude: -1.2680, longitude: 36.8390, cargoWeightKg: 25, priority: 'NORMAL', timeWindow: '09:00 - 10:30' },
+    { id: 'v_stop_3', shopName: 'Baraka Mart (Kawangware)', latitude: -1.2912, longitude: 36.7451, cargoWeightKg: 50, priority: 'NORMAL', timeWindow: '09:30 - 11:00' },
+    { id: 'v_stop_4', shopName: 'Zawadi Kiosk (Donholm)', latitude: -1.2980, longitude: 36.8920, cargoWeightKg: 30, priority: 'HIGH', timeWindow: '08:30 - 10:00' },
+    { id: 'v_stop_5', shopName: 'Amani Corner Duka (Eastleigh Sec 3)', latitude: -1.2720, longitude: 36.8580, cargoWeightKg: 20, priority: 'NORMAL', timeWindow: '08:00 - 09:00' },
+  ], []);
+
+  const vrpDepot = useMemo(() => ({
+    name: 'Eastleigh Mega Wholesale Depot',
+    lat: -1.2750,
+    lng: 36.8510,
+  }), []);
+
+  const vrpComparison = useMemo(() => {
+    return routingEngine.optimizeMultiDropTour(vrpDepot, defaultVrpStops);
+  }, [vrpDepot, defaultVrpStops]);
+
+  // Rider 20 km Mandate State
+  const [mandateRoadDist, setMandateRoadDist] = useState<number>(24.5);
+  const [mandateCargoWeight, setMandateCargoWeight] = useState<number>(35);
+
+  const mandateEvaluation = useMemo(() => {
+    const straightLine = parseFloat((mandateRoadDist / 1.38).toFixed(1));
+    return optimizationEngine.evaluateRiderMandate(mandateRoadDist, straightLine, mandateCargoWeight);
+  }, [mandateRoadDist, mandateCargoWeight]);
+
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(POSTGIS_SERVICE_ZONE_SCHEMA);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2000);
+  };
+
+  // Backwards compatibility for flat zone evaluator
   const [zoneShop, setZoneShop] = useState<string>('zone_nairobi_east');
   const [zoneWholesaler, setZoneWholesaler] = useState<string>('zone_nairobi_central');
   const [zoneDistance, setZoneDistance] = useState<number>(5.8);
@@ -1041,103 +1142,108 @@ export const BusinessRulesConsole: React.FC = () => {
             </div>
           )}
 
-          {/* 6. SERVICE ZONE BOUNDARY CHECKER (Rule 14) */}
+          {/* 6. HIERARCHICAL SUPPLY NETWORK & 20 KM NODE LAB (Rule 14) */}
           {activeRule.id === 'rule_14_service_zone_rules' && (
-            <div className="bg-white border border-emerald-300 rounded-xl p-6 shadow-sm space-y-6">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                    Geofence Protocol
-                  </span>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Rule 14 Geofenced Service Zones & Cross-Town Routing
-                  </h3>
-                </div>
-                <div className="text-right">
-                  <span className="text-xs text-slate-500">Eligibility Status</span>
-                  <div className={`text-sm font-bold ${zoneEligibilityResult.isEligible ? 'text-emerald-700' : 'text-rose-600'}`}>
-                    {zoneEligibilityResult.transitType}
-                  </div>
-                </div>
-              </div>
+            <div className="space-y-6">
+              <HierarchicalSupplyNetworkLab />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <div>
-                    <label className="font-semibold text-slate-700">Retailer Duka Zone:</label>
-                    <select
-                      value={zoneShop}
-                      onChange={(e) => setZoneShop(e.target.value)}
-                      className="w-full mt-1 border border-slate-300 rounded p-1.5 bg-white text-xs"
-                    >
-                      <option value="zone_nairobi_central">Zone Central (Eastleigh / Pangani / CBD)</option>
-                      <option value="zone_nairobi_east">Zone East (Kariobangi / Dandora / Umoja)</option>
-                      <option value="zone_nairobi_south">Zone South (Industrial Area / South B)</option>
-                      <option value="zone_nairobi_west">Zone West (Kawangware / Kibera / Westlands)</option>
-                    </select>
+              {/* Collapsible Quick Single-Order Boundary Checker */}
+              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                      Legacy Micro-Check
+                    </span>
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Quick Single-Order Distance & Boundary Calculator
+                    </h4>
                   </div>
-
-                  <div>
-                    <label className="font-semibold text-slate-700">Wholesale Depot Zone:</label>
-                    <select
-                      value={zoneWholesaler}
-                      onChange={(e) => setZoneWholesaler(e.target.value)}
-                      className="w-full mt-1 border border-slate-300 rounded p-1.5 bg-white text-xs"
-                    >
-                      <option value="zone_nairobi_central">Zone Central (Eastleigh Mega Wholesale)</option>
-                      <option value="zone_nairobi_south">Zone South (Industrial Area Supply Hub)</option>
-                      <option value="zone_nairobi_west">Zone West (Nairobi West Wholesale)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between font-medium mb-1">
-                      <span>Road Distance:</span>
-                      <span className="font-bold font-mono">{zoneDistance.toFixed(1)} km</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={1.0}
-                      max={14.0}
-                      step={0.2}
-                      value={zoneDistance}
-                      onChange={(e) => setZoneDistance(parseFloat(e.target.value))}
-                      className="w-full accent-emerald-600"
-                    />
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>1.0 km</span>
-                      <span>9.0 km (Inter-zone cap)</span>
-                      <span>10.0 km (Hard cutoff)</span>
-                      <span>14.0 km</span>
-                    </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider block">Classification</span>
+                    <span className={`text-xs font-bold font-mono ${zoneEligibilityResult.isEligible ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {zoneEligibilityResult.transitType}
+                    </span>
                   </div>
                 </div>
 
-                {/* Geofence Outcome */}
-                <div className="space-y-3 bg-slate-900 text-white p-4 rounded-lg font-mono text-xs flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <div className="text-slate-400 text-[11px] uppercase tracking-wider">
-                      Geofence Transit Evaluation
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <div>
+                      <label className="font-semibold text-slate-700">Retailer Duka Zone:</label>
+                      <select
+                        value={zoneShop}
+                        onChange={(e) => setZoneShop(e.target.value)}
+                        className="w-full mt-1 border border-slate-300 rounded p-1.5 bg-white text-xs"
+                      >
+                        <option value="zone_nairobi_central">Zone Central (Eastleigh / Pangani / CBD)</option>
+                        <option value="zone_nairobi_east">Zone East (Kariobangi / Dandora / Umoja)</option>
+                        <option value="zone_nairobi_south">Zone South (Industrial Area / South B)</option>
+                        <option value="zone_nairobi_west">Zone West (Kawangware / Kibera / Westlands)</option>
+                      </select>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Transit Classification:</span>
-                      <span className={zoneEligibilityResult.isEligible ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
-                        {zoneEligibilityResult.transitType}
-                      </span>
+
+                    <div>
+                      <label className="font-semibold text-slate-700">Wholesale Depot Zone:</label>
+                      <select
+                        value={zoneWholesaler}
+                        onChange={(e) => setZoneWholesaler(e.target.value)}
+                        className="w-full mt-1 border border-slate-300 rounded p-1.5 bg-white text-xs"
+                      >
+                        <option value="zone_nairobi_central">Zone Central (Eastleigh Mega Wholesale)</option>
+                        <option value="zone_nairobi_south">Zone South (Industrial Area Supply Hub)</option>
+                        <option value="zone_nairobi_west">Zone West (Nairobi West Wholesale)</option>
+                      </select>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Inter-Zone Surcharge:</span>
-                      <span>+KES {zoneEligibilityResult.interZoneSurchargeKES}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Expected Boda SLA:</span>
-                      <span className="text-emerald-300">{zoneEligibilityResult.estimatedSlaMinutes}</span>
+
+                    <div>
+                      <div className="flex justify-between font-medium mb-1">
+                        <span>Road Distance:</span>
+                        <span className="font-bold font-mono">{zoneDistance.toFixed(1)} km</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={1.0}
+                        max={14.0}
+                        step={0.2}
+                        value={zoneDistance}
+                        onChange={(e) => setZoneDistance(parseFloat(e.target.value))}
+                        className="w-full accent-emerald-600"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-400">
+                        <span>1.0 km</span>
+                        <span>9.0 km (Inter-zone cap)</span>
+                        <span>10.0 km (Hard cutoff)</span>
+                        <span>14.0 km</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-700 text-slate-300 text-[11px]">
-                    <span className="font-bold text-white">Geofence Policy Notes: </span>
-                    {zoneEligibilityResult.notes}
+                  {/* Geofence Outcome */}
+                  <div className="space-y-3 bg-slate-900 text-white p-4 rounded-lg font-mono text-xs flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="text-slate-400 text-[11px] uppercase tracking-wider">
+                        Geofence Transit Evaluation
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Transit Classification:</span>
+                        <span className={zoneEligibilityResult.isEligible ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                          {zoneEligibilityResult.transitType}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Inter-Zone Surcharge:</span>
+                        <span>+KES {zoneEligibilityResult.interZoneSurchargeKES}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400">Expected Boda SLA:</span>
+                        <span className="text-emerald-300">{zoneEligibilityResult.estimatedSlaMinutes}</span>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-700 text-slate-300 text-[11px]">
+                      <span className="font-bold text-white">Geofence Policy Notes: </span>
+                      {zoneEligibilityResult.notes}
+                    </div>
                   </div>
                 </div>
               </div>

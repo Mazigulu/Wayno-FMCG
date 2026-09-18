@@ -147,7 +147,7 @@ export const Header: React.FC<HeaderProps> = ({
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>Admin Operations</span>
               <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                5 Modules
+                Command Center
               </span>
               {activeOrdersCount > 0 && (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />

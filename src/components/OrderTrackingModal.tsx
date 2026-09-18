@@ -9,7 +9,10 @@ import {
   ShieldCheck, 
   Phone, 
   Package,
-  KeyRound
+  KeyRound,
+  AlertTriangle,
+  XCircle,
+  RotateCcw
 } from 'lucide-react';
 import { Order, OrderState } from '../types/wayno';
 
@@ -98,6 +101,68 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
 
         {/* Modal Body */}
         <div className="p-4 overflow-y-auto space-y-4 flex-1 text-xs">
+          {/* 1. CANCELLED Exceptional State Banner */}
+          {order.status === 'CANCELLED' && (
+            <div className="bg-slate-100 border border-slate-300 rounded p-3 text-slate-900 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold text-slate-800">
+                <XCircle className="w-4 h-4 text-slate-700" />
+                <span className="uppercase tracking-wide text-[11px]">Order State: CANCELLED</span>
+              </div>
+              <p className="text-xs text-slate-600">
+                This order was terminated and removed from the active delivery queue.
+                {order.stateHistory.find(h => h.state === 'CANCELLED')?.note && (
+                  <span className="block font-mono text-[11px] text-slate-700 mt-0.5">
+                    Reason: {order.stateHistory.find(h => h.state === 'CANCELLED')?.note}
+                  </span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {/* 2. FAILED Exceptional State Banner (Without Delivery Exception) */}
+          {order.status === 'FAILED' && !order.deliveryException && (
+            <div className="bg-rose-50 border border-rose-300 rounded p-3 text-rose-900 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold text-rose-800">
+                <AlertTriangle className="w-4 h-4 text-rose-700" />
+                <span className="uppercase tracking-wide text-[11px]">Order State: FAILED</span>
+              </div>
+              <p className="text-xs text-rose-700">
+                Delivery or fulfillment could not be completed. Pending operational intervention or re-dispatch.
+              </p>
+            </div>
+          )}
+
+          {/* 3. REFUNDED Exceptional State Banner */}
+          {order.status === 'REFUNDED' && (
+            <div className="bg-purple-50 border border-purple-300 rounded p-3 text-purple-950 space-y-1.5">
+              <div className="flex items-center justify-between font-bold text-purple-900">
+                <div className="flex items-center space-x-1.5">
+                  <RotateCcw className="w-4 h-4 text-purple-700" />
+                  <span className="uppercase tracking-wide text-[11px]">Order State: REFUNDED</span>
+                </div>
+                <span className="font-mono font-bold text-xs text-purple-800">
+                  KES {order.totalAmount.toLocaleString()} Reversible
+                </span>
+              </div>
+              <p className="text-xs text-purple-800">
+                Payment was refunded back to the retailer via M-Pesa B2C reversal.
+              </p>
+            </div>
+          )}
+
+          {/* 4. PARTIALLY_FULFILLED State Banner */}
+          {order.status === 'PARTIALLY_FULFILLED' && (
+            <div className="bg-amber-50 border border-amber-300 rounded p-3 text-amber-950 space-y-1">
+              <div className="flex items-center space-x-1.5 font-bold text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-700" />
+                <span className="uppercase tracking-wide text-[11px]">Order State: PARTIALLY FULFILLED</span>
+              </div>
+              <p className="text-xs text-amber-800">
+                Due to stockout constraints at the wholesale depot, some items were substituted or adjusted.
+              </p>
+            </div>
+          )}
+
           {/* Delivery Exception Alert (FR-FUL-007) */}
           {order.deliveryException && (
             <div className="bg-rose-50 border border-rose-300 rounded p-3 text-rose-900 space-y-1">
@@ -152,6 +217,43 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
               <span className="text-[10px] text-slate-500 block">Give to rider on arrival</span>
             </div>
           </div>
+
+          {/* Emergency Offline Delivery OTP / USSD Fallback */}
+          {order.offlineDeliveryCode && (
+            <div className="bg-amber-50/70 border border-amber-200 rounded p-2.5 flex items-center justify-between text-xs">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wide flex items-center space-x-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Offline USSD Backup PIN</span>
+                </span>
+                <p className="text-[11px] text-amber-800">
+                  If smartphone battery runs out, rider can verify delivery using this offline code:
+                </p>
+              </div>
+              <span className="font-mono text-sm font-bold bg-white px-2 py-1 border border-amber-300 rounded text-amber-900">
+                {order.offlineDeliveryCode}
+              </span>
+            </div>
+          )}
+
+          {/* Cargo Payload & Fleet Dispatch Spec */}
+          {order.totalWeightKg !== undefined && (
+            <div className="bg-slate-50 border border-slate-200 rounded p-2.5 flex items-center justify-between text-[11px] text-slate-600">
+              <span className="flex items-center space-x-1 font-medium text-slate-700">
+                <Bike className="w-3.5 h-3.5 text-slate-600" />
+                <span>Cargo Fleet:</span>
+                <span className="font-bold text-slate-900">{order.assignedVehicleType || 'BODA_BODA'}</span>
+                {order.dispatchSplitsCount && order.dispatchSplitsCount > 1 && (
+                  <span className="text-[10px] bg-slate-200 px-1 py-0.2 rounded font-mono">
+                    {order.dispatchSplitsCount} split runs
+                  </span>
+                )}
+              </span>
+              <span className="font-mono font-semibold text-slate-800">
+                {order.totalWeightKg} kg · {order.totalVolumeCbm} m³
+              </span>
+            </div>
+          )}
 
           {/* Stepper Timeline */}
           <div className="space-y-2.5">

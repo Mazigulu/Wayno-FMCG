@@ -1497,7 +1497,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                   </div>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Orders automatically query wholesalers within 7.5km of this geofence to guarantee sub-45 minute boda dispatch.
+                  Your duka is mapped to its primary 20 km local supply node. Local-first procurement queries your anchor wholesaler, with controlled escalation to regional parent hubs during stockouts.
                 </p>
               </div>
             </div>

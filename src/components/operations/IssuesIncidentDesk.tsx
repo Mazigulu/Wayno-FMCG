@@ -39,10 +39,11 @@ export const IssuesIncidentDesk: React.FC<IssuesIncidentDeskProps> = ({
     o.status === 'FAILED' || 
     o.status === 'CANCELLED' ||
     o.status === 'REFUNDED' ||
+    o.status === 'PARTIALLY_FULFILLED' ||
     o.refundRecord
   );
 
-  // If no live exception exists, provide realistic operational incidents
+  // If no live exception exists, provide comprehensive operational incidents showcasing all 4 exceptional states
   const displayIncidents: Order[] = exceptionOrders.length > 0 ? exceptionOrders : [
     {
       ...orders[0],
@@ -62,7 +63,7 @@ export const IssuesIncidentDesk: React.FC<IssuesIncidentDeskProps> = ({
       status: 'CANCELLED' as OrderState,
       deliveryException: {
         code: 'SHOP_CLOSED',
-        reason: 'Mama Sarah Provision Duka was shuttered for lunch prayer. 3 phone calls went unanswered.',
+        reason: 'Mama Sarah Provision Duka was shuttered for lunch prayer. 3 phone calls went unanswered; auto-cancelled by ops.',
         timestamp: '13:05:40',
         reportedByRiderId: 'RDR-002',
         reportedByRiderName: 'Kevin Otieno',
@@ -71,20 +72,44 @@ export const IssuesIncidentDesk: React.FC<IssuesIncidentDeskProps> = ({
     {
       ...(orders[2] || orders[0]),
       id: 'ORD-NBO-8923-EX3',
-      status: 'FAILED' as OrderState,
+      status: 'REFUNDED' as OrderState,
+      refundRecord: {
+        refundId: 'ref_8923',
+        amount: 2450,
+        reason: 'Duplicate payment callback resolution. Customer credited via Daraja B2C.',
+        initiatedAt: '2025-01-20T12:08:12Z',
+        completedAt: '2025-01-20T12:10:00Z',
+        mpesaReversalRef: 'QHK88912KL',
+        status: 'COMPLETED',
+      },
       deliveryException: {
-        code: 'WRONG_LOCATION',
-        reason: 'Retailer relocated duka to new kiosk 1.8km outside original geofence polygon.',
-        timestamp: '11:45:00',
+        code: 'PAYMENT_DISPUTE',
+        reason: 'Customer charged twice on network latency; automated Daraja reversal completed.',
+        timestamp: '12:08:12',
+        reportedByRiderId: 'SYSTEM',
+        reportedByRiderName: 'Daraja Gateway',
+      },
+    },
+    {
+      ...(orders[3] || orders[0]),
+      id: 'ORD-NBO-8924-EX4',
+      status: 'PARTIALLY_FULFILLED' as OrderState,
+      deliveryException: {
+        code: 'DAMAGED_GOODS_REFUSED',
+        reason: '1 of 3 cases of cooking oil was unsealed. 2 accepted, 1 returned to depot with partial credit note.',
+        timestamp: '10:30:15',
         reportedByRiderId: 'RDR-003',
         reportedByRiderName: 'Dennis Kipchoge',
       },
-    }
+    },
   ];
 
   const filteredIncidents = displayIncidents.filter(order => {
     const code = order.deliveryException?.code || 'GENERAL_EXCEPTION';
-    const matchesType = filterType === 'ALL' || code === filterType;
+    const matchesType = 
+      filterType === 'ALL' || 
+      code === filterType || 
+      order.status === filterType;
     const matchesSearch = 
       order.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.shopName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -176,12 +201,20 @@ export const IssuesIncidentDesk: React.FC<IssuesIncidentDeskProps> = ({
               onChange={(e) => setFilterType(e.target.value)}
               className="text-xs border border-slate-200 rounded py-1 px-2 bg-slate-50 text-slate-700 font-medium focus:outline-none"
             >
-              <option value="ALL">All Incident Types</option>
-              <option value="DAMAGED_GOODS_REFUSED">Damaged Goods Refused</option>
-              <option value="SHOP_CLOSED">Shop Shuttered / Closed</option>
-              <option value="RECIPIENT_UNREACHABLE">Recipient Unreachable</option>
-              <option value="WRONG_LOCATION">Wrong Location / Geofence</option>
-              <option value="PAYMENT_DISPUTE">Payment Dispute</option>
+              <option value="ALL">All Incidents & States</option>
+              <optgroup label="Exceptional Order States">
+                <option value="CANCELLED">CANCELLED</option>
+                <option value="FAILED">FAILED</option>
+                <option value="REFUNDED">REFUNDED</option>
+                <option value="PARTIALLY_FULFILLED">PARTIALLY_FULFILLED</option>
+              </optgroup>
+              <optgroup label="Delivery Exceptions">
+                <option value="DAMAGED_GOODS_REFUSED">Damaged Goods Refused</option>
+                <option value="SHOP_CLOSED">Shop Shuttered / Closed</option>
+                <option value="RECIPIENT_UNREACHABLE">Recipient Unreachable</option>
+                <option value="WRONG_LOCATION">Wrong Location / Geofence</option>
+                <option value="PAYMENT_DISPUTE">Payment Dispute</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -192,6 +225,7 @@ export const IssuesIncidentDesk: React.FC<IssuesIncidentDeskProps> = ({
             <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
               <tr>
                 <th className="py-2.5 px-3">Order Ref</th>
+                <th className="py-2.5 px-3">State</th>
                 <th className="py-2.5 px-3">Retail Duka</th>
                 <th className="py-2.5 px-3">Exception Classification</th>
                 <th className="py-2.5 px-3">Rider Field Notes</th>
@@ -211,10 +245,31 @@ export const IssuesIncidentDesk: React.FC<IssuesIncidentDeskProps> = ({
                   reportedByRiderName: 'Dispatch Radar'
                 };
 
+                const getStatusBadge = (st: OrderState) => {
+                  switch (st) {
+                    case 'CANCELLED':
+                      return 'bg-slate-100 text-slate-800 border-slate-300';
+                    case 'FAILED':
+                      return 'bg-rose-100 text-rose-800 border-rose-200';
+                    case 'REFUNDED':
+                      return 'bg-purple-100 text-purple-800 border-purple-200';
+                    case 'PARTIALLY_FULFILLED':
+                      return 'bg-amber-100 text-amber-800 border-amber-200';
+                    default:
+                      return 'bg-blue-100 text-blue-800 border-blue-200';
+                  }
+                };
+
                 return (
                   <tr key={order.id} className={`hover:bg-slate-50 transition-colors ${isResolved ? 'opacity-60 bg-slate-50/50' : ''}`}>
                     <td className="py-3 px-3 font-mono font-semibold text-slate-900">
                       {order.id}
+                    </td>
+
+                    <td className="py-3 px-3">
+                      <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded border inline-block ${getStatusBadge(order.status)}`}>
+                        {order.status}
+                      </span>
                     </td>
 
                     <td className="py-3 px-3">

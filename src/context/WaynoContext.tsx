@@ -9,24 +9,53 @@ import {
   TelemetryEvent, 
   OrderState,
   PaymentRecord,
+  PaymentTransaction,
+  Payment,
   DeliveryExceptionCode,
   DeliveryException
 } from '../types/wayno';
-import { INITIAL_SHOPS, INITIAL_RIDERS } from '../data/mockData';
-import { generateEvent, simulateMpesaReversal } from '../services/orderEngine';
+import { INITIAL_SHOPS, INITIAL_RIDERS, PRODUCTS, SUPPLIER_PRODUCTS } from '../data/mockData';
+import { generateEvent } from '../services/orderEngine';
+import { paymentService } from '../services/paymentService';
 import { recordOrderPromotionalConversions } from '../services/searchEngine';
 
 interface WaynoContextType {
   orders: Order[];
   events: TelemetryEvent[];
   cart: CartItem[];
-  paymentRecords: PaymentRecord[];
+  payments: Payment[];
+  paymentTransactions: PaymentTransaction[];
+  paymentRecords: PaymentRecord[]; // Backwards-compatible alias
   currentShop: RetailerShop;
   allShops: RetailerShop[];
   isCartOpen: boolean;
   trackingOrder: Order | null;
   activeOrdersCount: number;
   cartCount: number;
+
+  // Section 13: Product Management & Wholesaler Adoption
+  products: Product[];
+  supplierProducts: SupplierProduct[];
+  categories: string[];
+  handleCreateProduct: (productData: Omit<Product, 'id'>) => Product;
+  handleUpdateProduct: (productId: string, updates: Partial<Product>) => void;
+  handleToggleProductStatus: (productId: string) => void;
+  handleAddCategory: (newCategory: string) => void;
+  handleAdoptProductForWholesaler: (
+    wholesalerLocationId: string,
+    wholesalerName: string,
+    productId: string,
+    customPrice: number,
+    stockQty: number
+  ) => void;
+  handleUpdateWholesalerProductPriceAndStock: (
+    supplierProductId: string,
+    newPrice: number,
+    newStock: number,
+    availability?: boolean
+  ) => void;
+  handleRemoveWholesalerProduct: (supplierProductId: string) => void;
+
   addToCart: (
     product: Product, 
     supplierProduct: SupplierProduct, 
@@ -56,6 +85,13 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+
+  // Section 13: Product Management state
+  const [products, setProducts] = useState<Product[]>(PRODUCTS);
+  const [supplierProducts, setSupplierProducts] = useState<SupplierProduct[]>(SUPPLIER_PRODUCTS);
+  const [categories, setCategories] = useState<string[]>(() => 
+    Array.from(new Set(PRODUCTS.map(p => p.category_internal || p.internalCategory))).filter(Boolean)
+  );
 
   // Seeded active orders to showcase the full live network across Wholesalers, Riders, and Ops
   const [orders, setOrders] = useState<Order[]>([
@@ -166,10 +202,81 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     generateEvent('PAYMENT_COMPLETED', 'ret_01', 'shop_01', { orderId: 'WN-892410', provider: 'M-Pesa' }),
   ]);
 
-  // Authoritative Payment & Settlement Ledger Records
-  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>([
+  // Section 26: Authoritative Parent Payments Ledger
+  const [payments, setPayments] = useState<Payment[]>([
     {
-      id: 'pay_rec_01',
+      id: 'pay_892410',
+      orderId: 'WN-892410',
+      amount: 4530,
+      currency: 'KES',
+      status: 'PAID',
+      provider: 'M-Pesa',
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      updatedAt: new Date(Date.now() - 3500000).toISOString(),
+      transactionCount: 1,
+      latestTransactionId: 'txn_rec_01',
+      reconciliationStatus: 'RECONCILED',
+    },
+    {
+      id: 'pay_741920',
+      orderId: 'WN-741920',
+      amount: 8110,
+      currency: 'KES',
+      status: 'PAID',
+      provider: 'M-Pesa',
+      createdAt: new Date(Date.now() - 1800000).toISOString(),
+      updatedAt: new Date(Date.now() - 1700000).toISOString(),
+      transactionCount: 1,
+      latestTransactionId: 'txn_rec_02',
+      reconciliationStatus: 'RECONCILED',
+    },
+    {
+      id: 'pay_382911',
+      orderId: 'WN-382911',
+      amount: 3200,
+      currency: 'KES',
+      status: 'PAID',
+      provider: 'M-Pesa',
+      createdAt: new Date(Date.now() - 7260000).toISOString(),
+      updatedAt: new Date(Date.now() - 7180000).toISOString(),
+      transactionCount: 2, // 1st failed attempt, 2nd successful retry!
+      latestTransactionId: 'txn_rec_03b',
+      reconciliationStatus: 'RECONCILED',
+    },
+    {
+      id: 'pay_119284',
+      orderId: 'WN-119284',
+      amount: 1450,
+      currency: 'KES',
+      status: 'REFUNDED',
+      provider: 'M-Pesa',
+      createdAt: new Date(Date.now() - 14400000).toISOString(),
+      updatedAt: new Date(Date.now() - 13780000).toISOString(),
+      transactionCount: 2, // 1st capture, 2nd reversal
+      latestTransactionId: 'txn_rec_04_rev',
+      reconciliationStatus: 'RECONCILED',
+    },
+    {
+      id: 'pay_502914',
+      orderId: 'WN-502914',
+      amount: 2100,
+      currency: 'KES',
+      status: 'PENDING',
+      provider: 'M-Pesa',
+      createdAt: new Date(Date.now() - 420000).toISOString(),
+      updatedAt: new Date(Date.now() - 420000).toISOString(),
+      transactionCount: 1,
+      latestTransactionId: 'txn_rec_05_init',
+      reconciliationStatus: 'PENDING_AUDIT',
+    }
+  ]);
+
+  // Section 26: Granular Transaction Records (payment_transactions)
+  // Track: payment_id, order_id, provider, provider_reference, amount, currency, status, initiated_at, completed_at, failure_reason
+  const [paymentTransactions, setPaymentTransactions] = useState<PaymentTransaction[]>([
+    {
+      id: 'txn_rec_01',
+      paymentId: 'pay_892410',
       orderId: 'WN-892410',
       provider: 'M-Pesa',
       providerReference: 'QG48291048KE',
@@ -183,7 +290,8 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       completedAt: new Date(Date.now() - 3500000).toISOString(),
     },
     {
-      id: 'pay_rec_02',
+      id: 'txn_rec_02',
+      paymentId: 'pay_741920',
       orderId: 'WN-741920',
       provider: 'M-Pesa',
       providerReference: 'QG91827361KE',
@@ -197,21 +305,39 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       completedAt: new Date(Date.now() - 1700000).toISOString(),
     },
     {
-      id: 'pay_rec_03',
+      id: 'txn_rec_03a',
+      paymentId: 'pay_382911',
+      orderId: 'WN-382911',
+      provider: 'M-Pesa',
+      providerReference: 'ERR_USER_1032',
+      idempotencyKey: 'mpesa_idemp_WN-382911_attempt_1',
+      phoneNumber: '254733112233',
+      amount: 3200,
+      currency: 'KES',
+      status: 'FAILED',
+      failureReason: 'User cancelled STK push prompt on SIM toolkit (M-Pesa error code 1032)',
+      reconciliationState: 'PENDING_RECONCILIATION',
+      initiatedAt: new Date(Date.now() - 7260000).toISOString(),
+      completedAt: new Date(Date.now() - 7240000).toISOString(),
+    },
+    {
+      id: 'txn_rec_03b',
+      paymentId: 'pay_382911',
       orderId: 'WN-382911',
       provider: 'M-Pesa',
       providerReference: 'QG77419024KE',
-      idempotencyKey: 'mpesa_idemp_WN-382911_prev',
+      idempotencyKey: 'mpesa_idemp_WN-382911_attempt_2',
       phoneNumber: '254733112233',
       amount: 3200,
       currency: 'KES',
       status: 'SUCCESS',
-      reconciliationState: 'DUPLICATE_CALLBACK_PREVENTED',
+      reconciliationState: 'MATCHED',
       initiatedAt: new Date(Date.now() - 7200000).toISOString(),
       completedAt: new Date(Date.now() - 7180000).toISOString(),
     },
     {
-      id: 'pay_rec_04',
+      id: 'txn_rec_04_pay',
+      paymentId: 'pay_119284',
       orderId: 'WN-119284',
       provider: 'M-Pesa',
       providerReference: 'QG10294857KE',
@@ -219,12 +345,45 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       phoneNumber: '254799001122',
       amount: 1450,
       currency: 'KES',
-      status: 'REVERSED',
-      reconciliationState: 'REFUNDED',
+      status: 'SUCCESS',
+      reconciliationState: 'MATCHED',
       initiatedAt: new Date(Date.now() - 14400000).toISOString(),
       completedAt: new Date(Date.now() - 14350000).toISOString(),
+    },
+    {
+      id: 'txn_rec_04_rev',
+      paymentId: 'pay_119284',
+      orderId: 'WN-119284',
+      provider: 'M-Pesa',
+      providerReference: 'REV_99281044KE',
+      idempotencyKey: 'mpesa_rev_idemp_WN-119284',
+      phoneNumber: '254799001122',
+      amount: 1450,
+      currency: 'KES',
+      status: 'REVERSED',
+      failureReason: 'Stockout at depot; customer requested instant B2C reversal',
+      reconciliationState: 'REFUNDED',
+      initiatedAt: new Date(Date.now() - 13800000).toISOString(),
+      completedAt: new Date(Date.now() - 13780000).toISOString(),
+    },
+    {
+      id: 'txn_rec_05_init',
+      paymentId: 'pay_502914',
+      orderId: 'WN-502914',
+      provider: 'M-Pesa',
+      providerReference: 'STK_AWAITING_CALLBACK',
+      idempotencyKey: 'mpesa_idemp_WN-502914_init',
+      phoneNumber: '254701234567',
+      amount: 2100,
+      currency: 'KES',
+      status: 'INITIATED',
+      reconciliationState: 'PENDING_RECONCILIATION',
+      initiatedAt: new Date(Date.now() - 420000).toISOString(),
     }
   ]);
+
+  // Backward-compatible alias referencing paymentTransactions
+  const paymentRecords = paymentTransactions;
 
   const logEvent = (type: any, metadata: Record<string, any> = {}) => {
     const newEvt = generateEvent(type, currentShop.retailerId, currentShop.id, metadata);
@@ -313,6 +472,41 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setOrders((prev) => [newOrder, ...prev]);
     setCart([]);
+
+    // Section 26: Create parent payment and ledger transaction record
+    const paymentId = newOrder.paymentId || `pay_${newOrder.id.replace('WN-', '')}`;
+    const newTxnId = `txn_${Date.now()}`;
+    const newPayment: Payment = {
+      id: paymentId,
+      orderId: newOrder.id,
+      amount: newOrder.totalAmount,
+      currency: newOrder.currency || 'KES',
+      status: 'PAID',
+      provider: 'M-Pesa',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      transactionCount: 1,
+      latestTransactionId: newTxnId,
+      reconciliationStatus: 'RECONCILED',
+    };
+    const newTxn: PaymentTransaction = {
+      id: newTxnId,
+      paymentId: paymentId,
+      orderId: newOrder.id,
+      provider: 'M-Pesa',
+      providerReference: `QG${Math.floor(10000000 + Math.random() * 90000000)}KE`,
+      idempotencyKey: `mpesa_idemp_${newOrder.id}_${Date.now()}`,
+      phoneNumber: newOrder.retailerPhone,
+      amount: newOrder.totalAmount,
+      currency: newOrder.currency || 'KES',
+      status: 'SUCCESS',
+      reconciliationState: 'MATCHED',
+      initiatedAt: new Date(Date.now() - 1500).toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+    setPayments((prev) => [newPayment, ...prev]);
+    setPaymentTransactions((prev) => [newTxn, ...prev]);
+
     logEvent('ORDER_CREATED', { orderId: newOrder.id, gmv: newOrder.totalAmount });
     logEvent('PAYMENT_COMPLETED', { orderId: newOrder.id, provider: 'M-Pesa' });
     logEvent('SUPPLIER_ORDERED', { orderId: newOrder.id, wholesalerId: newOrder.wholesalerLocationId });
@@ -517,9 +711,16 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!targetOrder) return false;
 
     // Transition to REFUND_PENDING
-    handleUpdateOrderStatus(orderId, 'REFUND_PENDING', `Initiating M-Pesa B2C refund of KES ${amountKES}. Reason: ${reason}`, 'FINANCE_ENGINE');
+    handleUpdateOrderStatus(orderId, 'REFUND_PENDING', `Initiating refund of KES ${amountKES} via PaymentService. Reason: ${reason}`, 'FINANCE_ENGINE');
 
-    const result = await simulateMpesaReversal(targetOrder, amountKES, reason);
+    // Section 25: Application calls PaymentService abstraction directly
+    const result = await paymentService.refundPayment({
+      order: targetOrder,
+      refundAmount: amountKES,
+      reason,
+      provider: targetOrder.paymentMethod || 'M-Pesa',
+    });
+
     if (result.success) {
       setOrders((prev) =>
         prev.map((o) => {
@@ -542,8 +743,8 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 {
                   state: 'REFUNDED',
                   timestamp: new Date().toISOString(),
-                  note: `M-Pesa reversal completed under reference ${result.reversalRef}. Amount: KES ${amountKES}.`,
-                  actor: 'M-PESA_B2C_GATEWAY',
+                  note: `${result.provider} reversal completed under reference ${result.reversalRef}. Amount: KES ${amountKES}.`,
+                  actor: 'PAYMENT_SERVICE_GATEWAY',
                 },
               ],
               updatedAt: new Date().toISOString(),
@@ -553,7 +754,16 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         })
       );
 
-      setPaymentRecords((prev) => [result.paymentRecord, ...prev]);
+      setPaymentTransactions((prev) => [result.paymentRecord, ...prev]);
+      setPayments((prev) => prev.map((p) => p.orderId === orderId ? {
+        ...p,
+        status: 'REFUNDED',
+        transactionCount: p.transactionCount + 1,
+        latestTransactionId: result.paymentRecord.id,
+        reconciliationStatus: 'RECONCILED',
+        updatedAt: new Date().toISOString()
+      } : p));
+
       logEvent('PAYMENT_REVERSED', { orderId, reversalRef: result.reversalRef, amountKES });
       return true;
     }
@@ -565,6 +775,168 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (found) setCurrentShop(found);
   };
 
+  // Section 13: Product Management handlers (Admin)
+  const handleCreateProduct = (productData: Omit<Product, 'id'>): Product => {
+    const newId = `prod_${Date.now()}`;
+    const newProduct: Product = {
+      ...productData,
+      id: newId,
+      product_id: newId,
+      status: productData.status || 'ACTIVE',
+    };
+    setProducts((prev) => [newProduct, ...prev]);
+
+    const cat = productData.category_internal || productData.internalCategory;
+    if (cat && !categories.includes(cat)) {
+      setCategories((prev) => [...prev, cat]);
+    }
+
+    logEvent('PRODUCT_CREATED', {
+      productId: newId,
+      name: newProduct.name,
+      brand: newProduct.brand,
+      category: cat,
+      rrp: newProduct.recommendedRetailPrice,
+      wholesalePrice: newProduct.wholesalePrice,
+    });
+    return newProduct;
+  };
+
+  const handleUpdateProduct = (productId: string, updates: Partial<Product>) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId) {
+          const updated = { ...p, ...updates };
+          const cat = updated.category_internal || updated.internalCategory;
+          if (cat && !categories.includes(cat)) {
+            setCategories((c) => [...c, cat]);
+          }
+          return updated;
+        }
+        return p;
+      })
+    );
+
+    logEvent('PRODUCT_UPDATED', { productId, updates });
+  };
+
+  const handleToggleProductStatus = (productId: string) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId) {
+          const nextStatus = p.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+          logEvent('PRODUCT_STATUS_TOGGLED', {
+            productId,
+            oldStatus: p.status,
+            newStatus: nextStatus,
+          });
+          return { ...p, status: nextStatus };
+        }
+        return p;
+      })
+    );
+  };
+
+  const handleAddCategory = (newCat: string) => {
+    const trimmed = newCat.trim();
+    if (trimmed && !categories.includes(trimmed)) {
+      setCategories((prev) => [...prev, trimmed]);
+      logEvent('CATEGORY_ADDED', { category: trimmed });
+    }
+  };
+
+  // Wholesaler Adoption & Alteration handlers
+  const handleAdoptProductForWholesaler = (
+    wholesalerLocationId: string,
+    wholesalerName: string,
+    productId: string,
+    customPrice: number,
+    stockQty: number
+  ) => {
+    // ENFORCE: Product has to be originally made available by the admin
+    const targetProduct = products.find((p) => p.id === productId);
+    if (!targetProduct) {
+      throw new Error('Product not found in platform master catalog');
+    }
+    if (targetProduct.status !== 'ACTIVE') {
+      throw new Error('Cannot adopt product: Product is currently disabled/inactive on the platform');
+    }
+
+    const existingIdx = supplierProducts.findIndex(
+      (sp) => sp.wholesalerLocationId === wholesalerLocationId && sp.productId === productId
+    );
+
+    if (existingIdx >= 0) {
+      setSupplierProducts((prev) =>
+        prev.map((sp, idx) =>
+          idx === existingIdx
+            ? {
+                ...sp,
+                price: customPrice,
+                stockQty,
+                availability: stockQty > 0,
+                updatedAt: new Date().toISOString(),
+              }
+            : sp
+        )
+      );
+    } else {
+      const newSp: SupplierProduct = {
+        id: `sp_${wholesalerLocationId}_${productId}_${Date.now()}`,
+        productId,
+        wholesalerLocationId,
+        wholesalerName,
+        price: customPrice,
+        availability: stockQty > 0,
+        stockQty,
+        distanceKm: 2.8,
+        updatedAt: new Date().toISOString(),
+      };
+      setSupplierProducts((prev) => [newSp, ...prev]);
+    }
+
+    logEvent('WHOLESALER_ADOPTED_PRODUCT', {
+      wholesalerLocationId,
+      wholesalerName,
+      productId,
+      customPrice,
+      stockQty,
+    });
+  };
+
+  const handleUpdateWholesalerProductPriceAndStock = (
+    supplierProductId: string,
+    newPrice: number,
+    newStock: number,
+    availability?: boolean
+  ) => {
+    setSupplierProducts((prev) =>
+      prev.map((sp) =>
+        sp.id === supplierProductId
+          ? {
+              ...sp,
+              price: newPrice,
+              stockQty: newStock,
+              availability: availability !== undefined ? availability : newStock > 0,
+              updatedAt: new Date().toISOString(),
+            }
+          : sp
+      )
+    );
+
+    logEvent('WHOLESALER_PRICE_STOCK_ALTERED', {
+      supplierProductId,
+      newPrice,
+      newStock,
+      availability,
+    });
+  };
+
+  const handleRemoveWholesalerProduct = (supplierProductId: string) => {
+    setSupplierProducts((prev) => prev.filter((sp) => sp.id !== supplierProductId));
+    logEvent('WHOLESALER_PRODUCT_REMOVED', { supplierProductId });
+  };
+
   const activeOrdersCount = orders.filter((o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED').length;
   const cartCount = cart.reduce((acc, i) => acc + i.quantity, 0);
 
@@ -574,13 +946,28 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         orders,
         events,
         cart,
-        paymentRecords,
+        payments,
+        paymentTransactions,
+        paymentRecords: paymentTransactions,
         currentShop,
         allShops: INITIAL_SHOPS,
         isCartOpen,
         trackingOrder,
         activeOrdersCount,
         cartCount,
+
+        // Section 13: Product Management & Wholesaler Adoption
+        products,
+        supplierProducts,
+        categories,
+        handleCreateProduct,
+        handleUpdateProduct,
+        handleToggleProductStatus,
+        handleAddCategory,
+        handleAdoptProductForWholesaler,
+        handleUpdateWholesalerProductPriceAndStock,
+        handleRemoveWholesalerProduct,
+
         addToCart,
         updateCartQuantity,
         removeFromCart,

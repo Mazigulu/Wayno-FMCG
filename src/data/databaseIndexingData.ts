@@ -116,8 +116,23 @@ export const DATABASE_INDEXES_MANIFEST: DatabaseIndexDefinition[] = [
   },
 
   // ==========================================
-  // RETAILERS & SHOPS (POSTGIS SPATIAL)
+  // SECTION 12: RETAILER ACCOUNTS & SHOPS (POSTGIS SPATIAL)
   // ==========================================
+  {
+    id: 'idx_shops_retailer_id',
+    table: 'shops',
+    name: 'idx_shops_retailer_id',
+    type: 'B_TREE',
+    category: 'RETAILERS',
+    columns: ['retailer_id'],
+    definitionSql: 'CREATE INDEX idx_shops_retailer_id ON shops (retailer_id);',
+    purpose: 'Section 12: Associates retailer account with physical shops, enabling instantaneous parent-to-shop resolution.',
+    queryPattern: 'SELECT * FROM shops WHERE retailer_id = $1;',
+    expectedSpeedup: '96% reduction in lookup time',
+    seqScanLatencyMs: 45.2,
+    indexScanLatencyMs: 0.8,
+    bufferHitRate: '99.8%'
+  },
   {
     id: 'idx_shops_geom_gist',
     table: 'shops',
@@ -126,7 +141,7 @@ export const DATABASE_INDEXES_MANIFEST: DatabaseIndexDefinition[] = [
     category: 'RETAILERS',
     columns: ['geom (Point, 4326)'],
     definitionSql: 'CREATE INDEX idx_shops_location_geom_gist ON shops USING GIST (geom);',
-    purpose: 'Enables sub-5ms PostGIS ST_DWithin and ST_Contains geofence corridor queries across Nairobi.',
+    purpose: 'Section 12: PostGIS stores the geographical position. Enables sub-5ms ST_DWithin corridor queries across Nairobi.',
     queryPattern: 'SELECT id, name FROM shops WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 3000);',
     expectedSpeedup: '120x faster than polygon bounding box table scan',
     seqScanLatencyMs: 230.5,
@@ -169,32 +184,77 @@ export const DATABASE_INDEXES_MANIFEST: DatabaseIndexDefinition[] = [
   // ==========================================
   {
     id: 'idx_wholesaler_inv_lookup',
-    table: 'wholesaler_inventory',
-    name: 'idx_wholesaler_inventory_composite',
+    table: 'supplier_products',
+    name: 'idx_supplier_products_composite',
     type: 'B_TREE',
     category: 'WHOLESALERS',
     columns: ['wholesaler_id', 'product_id', 'available_stock'],
-    definitionSql: 'CREATE UNIQUE INDEX idx_wholesaler_inventory_composite ON wholesaler_inventory (wholesaler_id, product_id);',
+    definitionSql: 'CREATE UNIQUE INDEX idx_supplier_products_composite ON supplier_products (wholesaler_id, product_id);',
     purpose: 'Guarantees sub-millisecond multi-depot price comparison and stock checks during checkout.',
-    queryPattern: 'SELECT wholesale_price, available_stock FROM wholesaler_inventory WHERE wholesaler_id = $1 AND product_id = $2;',
+    queryPattern: 'SELECT wholesale_price, available_stock FROM supplier_products WHERE wholesaler_id = $1 AND product_id = $2;',
     expectedSpeedup: 'Direct index-only scan avoiding table heap reads',
     seqScanLatencyMs: 78.0,
     indexScanLatencyMs: 0.5,
     bufferHitRate: '100.0%'
   },
   {
+    id: 'idx_supplier_products_pricing_route',
+    table: 'supplier_products',
+    name: 'idx_supplier_products_product_price',
+    type: 'B_TREE',
+    category: 'PRODUCTS',
+    columns: ['product_id', 'wholesale_price', 'available_stock'],
+    definitionSql: 'CREATE INDEX idx_supplier_products_product_price ON supplier_products (product_id, wholesale_price ASC) WHERE is_available = TRUE AND available_stock > 0;',
+    purpose: 'Core 1:N Separation: Dynamically routes canonical Product Identity to the cheapest in-stock supplier without mutating master catalog.',
+    queryPattern: 'SELECT wholesaler_id, wholesale_price, available_stock FROM supplier_products WHERE product_id = $1 AND is_available = TRUE ORDER BY wholesale_price ASC LIMIT 1;',
+    expectedSpeedup: 'Instant cheapest-supplier routing in 0.4ms',
+    seqScanLatencyMs: 95.0,
+    indexScanLatencyMs: 0.4,
+    bufferHitRate: '100.0%'
+  },
+  {
     id: 'idx_wholesaler_low_stock',
-    table: 'wholesaler_inventory',
+    table: 'supplier_products',
     name: 'idx_wholesaler_low_stock_partial',
     type: 'PARTIAL_FILTERED',
     category: 'WHOLESALERS',
     columns: ['wholesaler_id', 'product_id', 'available_stock'],
-    definitionSql: 'CREATE INDEX idx_wholesaler_low_stock_partial ON wholesaler_inventory (wholesaler_id, available_stock) WHERE available_stock < 20;',
+    definitionSql: 'CREATE INDEX idx_wholesaler_low_stock_partial ON supplier_products (wholesaler_id, available_stock) WHERE available_stock < 20;',
     purpose: 'Powers proactive stockout alerts to procurement officers before depot inventory is exhausted.',
-    queryPattern: 'SELECT * FROM wholesaler_inventory WHERE available_stock < 20;',
+    queryPattern: 'SELECT * FROM supplier_products WHERE available_stock < 20;',
     expectedSpeedup: 'Scans only the low-inventory rows',
     seqScanLatencyMs: 64.0,
     indexScanLatencyMs: 0.4,
+    bufferHitRate: '100.0%'
+  },
+  {
+    id: 'idx_wholesaler_locations_geom_gist',
+    table: 'wholesaler_locations',
+    name: 'idx_wholesaler_locations_geom_gist',
+    type: 'GIST_SPATIAL',
+    category: 'WHOLESALERS',
+    columns: ['geom (Point, 4326)'],
+    definitionSql: 'CREATE INDEX idx_wholesaler_locations_geom_gist ON wholesaler_locations USING GIST (geom);',
+    purpose: 'Section 14: Allows WAYNO to work geographically by indexing physical wholesale depot locations for sub-5ms proximity radius queries.',
+    queryPattern: 'SELECT id, name, address FROM wholesaler_locations WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 5000);',
+    expectedSpeedup: '90x faster depot proximity lookup',
+    seqScanLatencyMs: 145.0,
+    indexScanLatencyMs: 1.2,
+    bufferHitRate: '99.8%'
+  },
+  {
+    id: 'idx_wholesaler_locations_wholesaler_fk',
+    table: 'wholesaler_locations',
+    name: 'idx_wholesaler_locations_wholesaler_id',
+    type: 'B_TREE',
+    category: 'WHOLESALERS',
+    columns: ['wholesaler_id', 'service_zone_id'],
+    definitionSql: 'CREATE INDEX idx_wholesaler_locations_wholesaler_id ON wholesaler_locations (wholesaler_id, service_zone_id);',
+    purpose: 'Section 14: Supports multi-location enterprises (1 Wholesaler -> N Locations) and zone filtering.',
+    queryPattern: 'SELECT * FROM wholesaler_locations WHERE wholesaler_id = $1;',
+    expectedSpeedup: 'Sub-millisecond multi-depot resolution',
+    seqScanLatencyMs: 40.0,
+    indexScanLatencyMs: 0.3,
     bufferHitRate: '100.0%'
   },
 
@@ -524,6 +584,51 @@ export const EXPLAIN_ANALYZE_SCENARIOS: ExplainAnalyzeScenario[] = [
         rows: 8,
         actualTime: '0.040..0.590',
         buffers: 'shared hit=8 read=0'
+      }
+    ]
+  },
+  {
+    id: 'scenario_identity_vs_availability_join',
+    title: 'Product Identity 1:N Supplier Availability Join (Dynamic Depot Routing)',
+    category: 'PRODUCTS',
+    sqlQuery: 'EXPLAIN (ANALYZE, BUFFERS) SELECT p.id, p.name, p.pack_size, sp.wholesaler_id, sp.wholesale_price, sp.available_stock FROM products p JOIN supplier_products sp ON p.id = sp.product_id WHERE p.id = \'prod_jogoo\' AND sp.is_available = TRUE AND sp.available_stock > 0 ORDER BY sp.wholesale_price ASC LIMIT 1;',
+    indexUsed: 'products_pkey & idx_supplier_products_product_price (Index-Only Scan)',
+    planningTimeMs: 0.18,
+    executionTimeMs: 0.42,
+    seqScanTimeMs: 115.0,
+    speedupMultiplier: '273x',
+    queryPlanNodes: [
+      {
+        nodeType: 'Limit',
+        cost: '0.28..4.15',
+        rows: 1,
+        actualTime: '0.040..0.410',
+        buffers: 'shared hit=6'
+      },
+      {
+        nodeType: 'Nested Loop (Decoupled 1:N Resolution)',
+        cost: '0.28..12.45',
+        rows: 3,
+        actualTime: '0.038..0.395',
+        buffers: 'shared hit=6'
+      },
+      {
+        nodeType: 'Index Scan using products_pkey (Product Identity Single-Row)',
+        relation: 'products',
+        indexName: 'products_pkey',
+        cost: '0.14..2.15',
+        rows: 1,
+        actualTime: '0.015..0.018',
+        buffers: 'shared hit=2 read=0'
+      },
+      {
+        nodeType: 'Index Scan using idx_supplier_products_product_price (Supplier Availability 1:N)',
+        relation: 'supplier_products',
+        indexName: 'idx_supplier_products_product_price',
+        cost: '0.14..10.20',
+        rows: 3,
+        actualTime: '0.020..0.360',
+        buffers: 'shared hit=4 read=0'
       }
     ]
   }

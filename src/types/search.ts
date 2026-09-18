@@ -177,6 +177,7 @@ export interface SearchExecutionResultEnhanced {
   indexMetrics?: InvertedIndexMetrics;
   synonymsApplied?: Array<{ original: string; expansions: string[] }>;
   fuzzyMatches?: Array<{ original: string; matched: string; distance: number; score: number }>;
+  sequenceId?: number; // Monotonic counter to prevent out-of-order 2G/3G jitter overwrite
 }
 
 export interface SearchAnalyticsEntry {

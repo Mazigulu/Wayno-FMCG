@@ -18,7 +18,13 @@ import {
   TrendingUp, 
   Sparkles,
   ArrowRight,
-  Code2
+  Code2,
+  GitFork,
+  Package,
+  Building2,
+  Boxes,
+  Tag,
+  AlertCircle
 } from 'lucide-react';
 import { 
   DATABASE_INDEXES_MANIFEST, 
@@ -26,13 +32,15 @@ import {
   DatabaseIndexDefinition, 
   ExplainAnalyzeScenario 
 } from '../data/databaseIndexingData';
+import { PRODUCTS, SUPPLIER_PRODUCTS } from '../data/mockData';
 
 export const DatabaseIndexingConsole: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<string>('ALL');
   const [activeType, setActiveType] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedScenarioId, setSelectedScenarioId] = useState<string>(EXPLAIN_ANALYZE_SCENARIOS[0].id);
-  const [activeTab, setActiveTab] = useState<'manifest' | 'explain' | 'migrations' | 'audit'>('manifest');
+  const [activeTab, setActiveTab] = useState<'manifest' | 'explain' | 'migrations' | 'audit' | 'identity_vs_availability'>('manifest');
+  const [selectedProductId, setSelectedProductId] = useState<string>('prod_jogoo');
   const [copiedSql, setCopiedSql] = useState<string | null>(null);
 
   const selectedScenario = EXPLAIN_ANALYZE_SCENARIOS.find(s => s.id === selectedScenarioId) || EXPLAIN_ANALYZE_SCENARIOS[0];
@@ -83,25 +91,48 @@ CREATE TABLE IF NOT EXISTS retailers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Section 12: SHOPS
+-- A retailer account should be associated with a physical shop.
+-- PostGIS stores the geographical position.
 CREATE TABLE IF NOT EXISTS shops (
     id VARCHAR(64) PRIMARY KEY,
     retailer_id VARCHAR(64) NOT NULL REFERENCES retailers(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     address TEXT NOT NULL,
-    geom GEOMETRY(Point, 4326) NOT NULL,
+    latitude NUMERIC(10, 6) NOT NULL,
+    longitude NUMERIC(10, 6) NOT NULL,
+    geom GEOMETRY(Point, 4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)) STORED,
     service_zone_id VARCHAR(32) NOT NULL,
+    operating_status VARCHAR(16) NOT NULL DEFAULT 'OPEN',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 14. WHOLESALERS & WHOLESALER LOCATIONS
+-- This distinction is critical: One wholesaler enterprise can operate multiple physical depot locations.
 CREATE TABLE IF NOT EXISTS wholesalers (
     id VARCHAR(64) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    business_reg_no VARCHAR(64),
+    phone VARCHAR(32),
+    status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Section 14: Wholesaler Locations (Allows WAYNO to work geographically)
+CREATE TABLE IF NOT EXISTS wholesaler_locations (
+    id VARCHAR(64) PRIMARY KEY,
+    wholesaler_id VARCHAR(64) NOT NULL REFERENCES wholesalers(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
     address TEXT NOT NULL,
-    geom GEOMETRY(Point, 4326) NOT NULL,
+    latitude NUMERIC(10, 6) NOT NULL,
+    longitude NUMERIC(10, 6) NOT NULL,
+    geom GEOMETRY(Point, 4326) GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)) STORED,
     service_zone_id VARCHAR(32) NOT NULL,
+    operating_hours VARCHAR(64) NOT NULL DEFAULT '06:00 - 19:30',
     status VARCHAR(16) NOT NULL DEFAULT 'ACTIVE',
     reliability_score NUMERIC(5, 2) NOT NULL DEFAULT 98.0,
-    avg_prep_time_minutes NUMERIC(5, 2) NOT NULL DEFAULT 15.0
+    avg_prep_time_minutes NUMERIC(5, 2) NOT NULL DEFAULT 15.0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS products (
@@ -117,6 +148,22 @@ CREATE TABLE IF NOT EXISTS products (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- ARCHITECTURAL PILLAR: Separation of Product Identity from Supplier Availability (1:N)
+-- Product Identity (products): Immutable canonical FMCG taxonomy, GS1 barcodes, pack specs, and aliases.
+-- Supplier Availability (supplier_products): Volatile depot offers, wholesale pricing, stock counts, and SLAs.
+CREATE TABLE IF NOT EXISTS supplier_products (
+    id VARCHAR(64) PRIMARY KEY,
+    product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    wholesaler_id VARCHAR(64) NOT NULL REFERENCES wholesalers(id) ON DELETE CASCADE,
+    wholesale_price NUMERIC(10, 2) NOT NULL,
+    available_stock INTEGER NOT NULL DEFAULT 0,
+    is_available BOOLEAN NOT NULL DEFAULT TRUE,
+    distance_km NUMERIC(5, 2) NOT NULL DEFAULT 0.0,
+    lead_time_minutes INTEGER NOT NULL DEFAULT 30,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT uq_wholesaler_product UNIQUE (wholesaler_id, product_id)
+);
+
 CREATE TABLE IF NOT EXISTS orders (
     id VARCHAR(64) PRIMARY KEY,
     retailer_id VARCHAR(64) NOT NULL REFERENCES retailers(id),
@@ -129,6 +176,38 @@ CREATE TABLE IF NOT EXISTS orders (
     delivery_otp VARCHAR(8),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Section 26: Two-tier Payment Ledger (Parent Entity)
+CREATE TABLE IF NOT EXISTS payments (
+    id VARCHAR(64) PRIMARY KEY,
+    order_id VARCHAR(64) NOT NULL REFERENCES orders(id),
+    amount NUMERIC(12, 2) NOT NULL,
+    currency VARCHAR(8) NOT NULL DEFAULT 'KES',
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    provider VARCHAR(64) NOT NULL DEFAULT 'M-Pesa',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Section 26: Payment Transactions Ledger (Audit & Reconciliation Child Records)
+-- Tracks: payment_id, order_id, provider, provider_reference, amount, currency, status, initiated_at, completed_at, failure_reason
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    id VARCHAR(64) PRIMARY KEY,
+    payment_id VARCHAR(64) NOT NULL REFERENCES payments(id),
+    order_id VARCHAR(64) NOT NULL REFERENCES orders(id),
+    provider VARCHAR(64) NOT NULL,
+    provider_reference VARCHAR(128) NOT NULL,
+    idempotency_key VARCHAR(128) UNIQUE NOT NULL,
+    phone_number VARCHAR(32),
+    amount NUMERIC(12, 2) NOT NULL,
+    currency VARCHAR(8) NOT NULL DEFAULT 'KES',
+    status VARCHAR(32) NOT NULL, -- INITIATED, SUCCESS, FAILED, REVERSED
+    initiated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    failure_reason TEXT,
+    reconciliation_state VARCHAR(64) NOT NULL DEFAULT 'PENDING_RECONCILIATION',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );`
     },
     {
@@ -153,17 +232,51 @@ ON order_items (order_id);
 CREATE INDEX idx_order_items_product_id 
 ON order_items (product_id, quantity);
 
--- Wholesaler Inventory: Composite index for instant price & stock lookup
-CREATE UNIQUE INDEX idx_wholesaler_inventory_composite 
-ON wholesaler_inventory (wholesaler_id, product_id);
+-- Supplier Products (Decoupled 1:N Availability): Composite lookup and dynamic cheapest routing
+CREATE UNIQUE INDEX idx_supplier_products_composite 
+ON supplier_products (wholesaler_id, product_id);
+
+CREATE INDEX idx_supplier_products_product_price 
+ON supplier_products (product_id, wholesale_price ASC) 
+WHERE is_available = TRUE AND available_stock > 0;
+
+-- Wholesaler Locations (1:N Geographic Depots): Foreign key to parent wholesaler & service zone filtering
+CREATE INDEX idx_wholesaler_locations_wholesaler_id 
+ON wholesaler_locations (wholesaler_id);
+
+CREATE INDEX idx_wholesaler_locations_service_zone 
+ON wholesaler_locations (service_zone_id, status);
 
 -- Retailers: Service zone and operating status filtering
 CREATE INDEX idx_retailers_service_zone_status 
 ON retailers (service_zone_id, operating_status);
 
--- Payments: Order ID and payment status lookup for webhooks
+-- Section 12: Shops (Physical Duka Association & Zone Status)
+CREATE INDEX idx_shops_retailer_id 
+ON shops (retailer_id);
+
+CREATE INDEX idx_shops_service_zone_status 
+ON shops (service_zone_id, operating_status);
+
+-- Section 26: Payments parent lookups by order
 CREATE INDEX idx_payments_order_id_status 
 ON payments (order_id, status, created_at DESC);
+
+-- Section 26: Payment Transactions (Audit & Daraja Reconciliation)
+CREATE INDEX idx_payment_txns_payment_id 
+ON payment_transactions (payment_id, created_at DESC);
+
+CREATE INDEX idx_payment_txns_order_id 
+ON payment_transactions (order_id, created_at DESC);
+
+CREATE INDEX idx_payment_txns_provider_ref 
+ON payment_transactions (provider, provider_reference);
+
+CREATE UNIQUE INDEX idx_payment_txns_idempotency 
+ON payment_transactions (idempotency_key);
+
+CREATE INDEX idx_payment_txns_status_reconciliation 
+ON payment_transactions (status, reconciliation_state);
 
 -- Deliveries: Rider mission roster
 CREATE INDEX idx_deliveries_rider_status_created 
@@ -179,9 +292,9 @@ ON deliveries (rider_id, status, assigned_at DESC);`
 CREATE INDEX idx_shops_location_geom_gist 
 ON shops USING GIST (geom);
 
--- Spatial index on wholesale depot locations
-CREATE INDEX idx_wholesalers_geom_gist 
-ON wholesalers USING GIST (geom);
+-- Spatial index on wholesale depot locations (wholesaler_locations)
+CREATE INDEX idx_wholesaler_locations_geom_gist 
+ON wholesaler_locations USING GIST (geom);
 
 -- Spatial KNN index for nearest available boda-boda courier dispatch
 CREATE INDEX idx_riders_last_known_location_gist 
@@ -369,6 +482,18 @@ SELECT add_compression_policy('telemetry_events', INTERVAL '7 days');`
           >
             <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
             <span>Index Health & Invariant Audit</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('identity_vs_availability')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              activeTab === 'identity_vs_availability'
+                ? 'bg-emerald-800 text-white font-semibold shadow-2xs'
+                : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-900'
+            }`}
+          >
+            <GitFork className="w-3.5 h-3.5 text-emerald-300" />
+            <span className="font-semibold">Identity vs Availability (1:N Pillar)</span>
           </button>
         </div>
       </div>
@@ -758,6 +883,12 @@ SELECT add_compression_policy('telemetry_events', INTERVAL '7 days');`
                 status: 'PASSED',
                 desc: 'Order state audit logs and S3 Parquet telemetry events are partitioned into 24-hour hypertable chunks with columnar compression, pruning 95% of past time slices from analytical scans.',
                 metric: '24-Hour Time Buckets Configured'
+              },
+              {
+                rule: 'Separation of Product Identity from Supplier Availability (1:N Invariant)',
+                status: 'PASSED',
+                desc: 'Product Identity (`products`) contains immutable canonical FMCG taxonomy, GS1 barcodes, pack specs, and aliases. Supplier Availability (`supplier_products`) contains volatile depot pricing, stock counts, and SLAs. Master catalog records are never duplicated when multiple wholesalers stock the same item.',
+                metric: '15 Master SKUs : 32 Supplier Offers (1:N Decoupled)'
               }
             ].map((check, cIdx) => (
               <div key={cIdx} className="p-3 bg-slate-50 border border-slate-200 rounded flex items-start justify-between gap-3">
@@ -782,6 +913,344 @@ SELECT add_compression_policy('telemetry_events', INTERVAL '7 days');`
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* TAB 5: ARCHITECTURAL PILLAR: PRODUCT IDENTITY VS SUPPLIER AVAILABILITY    */}
+      {/* ========================================================================= */}
+      {activeTab === 'identity_vs_availability' && (() => {
+        const selectedProd = PRODUCTS.find(p => p.id === selectedProductId) || PRODUCTS[0];
+        const matchingSuppliers = SUPPLIER_PRODUCTS.filter(sp => sp.productId === selectedProd.id);
+        const cheapestSupplier = matchingSuppliers.length > 0
+          ? [...matchingSuppliers].sort((a, b) => a.price - b.price)[0]
+          : null;
+
+        return (
+          <div className="space-y-4">
+            {/* Header Banner */}
+            <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-slate-950 text-white rounded-lg p-5 border border-emerald-800/40 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-2 border border-emerald-500/30">
+                    <GitFork className="w-3 h-3" />
+                    <span>Core Database Architecture Invariant</span>
+                  </div>
+                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center space-x-2">
+                    <span>Separating Product Identity from Supplier Availability</span>
+                  </h2>
+                  <p className="text-xs text-slate-300 mt-1 max-w-3xl leading-relaxed">
+                    One of the most foundational architectural decisions in the Wayno FMCG marketplace database.
+                    It strictly decouples <strong>what an FMCG product is</strong> (canonical Master SKU identity, GS1 barcode, pack size, Sheng aliases)
+                    from <strong>who is selling it, at what wholesale price, and in what depot</strong> (volatile 1:N availability offers).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 shrink-0 text-center">
+                  <div className="bg-white/10 px-3 py-2 rounded border border-white/10">
+                    <span className="text-[10px] text-slate-300 block uppercase font-medium">Master SKUs</span>
+                    <span className="text-base font-bold text-emerald-400 font-mono">{PRODUCTS.length} Unique</span>
+                  </div>
+                  <div className="bg-white/10 px-3 py-2 rounded border border-white/10">
+                    <span className="text-[10px] text-slate-300 block uppercase font-medium">Depot Offers</span>
+                    <span className="text-base font-bold text-blue-400 font-mono">{SUPPLIER_PRODUCTS.length} Listings</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Interactive 1:N Live Simulator */}
+            <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-4 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-2">
+                    <Boxes className="w-4 h-4 text-emerald-600" />
+                    <span>Live 1:N Relational Inspector Simulator</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Select any Master Product to inspect its immutable identity and see how multiple competing wholesale depots link to it dynamically.
+                  </p>
+                </div>
+
+                {/* SKU Selector */}
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-medium text-slate-600">Select Product:</span>
+                  <select
+                    value={selectedProductId}
+                    onChange={(e) => setSelectedProductId(e.target.value)}
+                    className="text-xs bg-slate-50 border border-slate-300 rounded px-2.5 py-1 font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    {PRODUCTS.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.brand}: {p.name.length > 35 ? p.name.substring(0, 35) + '...' : p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Side-by-side 1:N Visual Comparison */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                {/* Left: Product Identity (1) */}
+                <div className="lg:col-span-5 bg-slate-50 border-2 border-emerald-600/30 rounded-lg p-3.5 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5">
+                      <Package className="w-4 h-4 text-emerald-700" />
+                      <span className="text-xs font-bold text-slate-900 uppercase font-mono">Table: products (1)</span>
+                    </div>
+                    <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-mono">
+                      PRODUCT IDENTITY
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-mono block">product_id (Primary Key)</span>
+                      <span className="text-xs font-bold text-slate-900 font-mono">{selectedProd.id}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-mono block">name (Canonical FMCG Name)</span>
+                      <span className="text-xs font-semibold text-slate-900">{selectedProd.name}</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-mono block">brand</span>
+                        <span className="font-medium text-slate-800">{selectedProd.brand}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-mono block">manufacturer</span>
+                        <span className="font-medium text-slate-800">{selectedProd.manufacturer}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-mono block">pack_size · unit</span>
+                        <span className="font-medium text-slate-800">{selectedProd.packSize} ({selectedProd.unit})</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-mono block">category_internal</span>
+                        <span className="font-medium text-slate-800">{selectedProd.internalCategory}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-mono block">barcode (GS1 EAN-13)</span>
+                        <span className="font-mono text-xs font-bold text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200 inline-block">
+                          {selectedProd.barcode}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-mono block">recommended_retail_price (RRP)</span>
+                        <span className="font-mono text-xs font-bold text-emerald-700">
+                          KES {selectedProd.recommendedRetailPrice.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-mono block">aliases (Swahili & Sheng Vernacular Terms)</span>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {selectedProd.aliases.map((alias, aIdx) => (
+                          <span key={aIdx} className="text-[10px] bg-slate-200/70 text-slate-800 px-1.5 py-0.5 rounded font-mono">
+                            {alias}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-emerald-50 rounded border border-emerald-200/60 text-[11px] text-emerald-900 leading-snug">
+                    <span className="font-bold">Invariant:</span> Single source of truth. Contains 0 supplier prices and 0 stock quantities.
+                    Indexed once in the pg_trgm GIN index for typo-tolerant NLP search.
+                  </div>
+                </div>
+
+                {/* Center: 1:N Join Indicator */}
+                <div className="lg:col-span-1 flex lg:flex-col items-center justify-center py-2 lg:py-12 text-slate-400">
+                  <div className="hidden lg:block h-8 w-0.5 bg-slate-200"></div>
+                  <div className="px-2 py-1 bg-slate-100 border border-slate-300 rounded text-[10px] font-bold font-mono text-slate-700 uppercase my-1">
+                    1 : N
+                  </div>
+                  <div className="hidden lg:block h-8 w-0.5 bg-slate-200"></div>
+                </div>
+
+                {/* Right: Supplier Availability (N) */}
+                <div className="lg:col-span-6 bg-slate-50 border-2 border-blue-600/30 rounded-lg p-3.5 space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5">
+                      <Building2 className="w-4 h-4 text-blue-700" />
+                      <span className="text-xs font-bold text-slate-900 uppercase font-mono">Table: supplier_products (N)</span>
+                    </div>
+                    <span className="text-[10px] font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded font-mono">
+                      {matchingSuppliers.length} COMPETING DEPOTS
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {matchingSuppliers.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-slate-500 bg-white rounded border border-slate-200">
+                        No active supplier listings currently registered for this SKU.
+                      </div>
+                    ) : (
+                      matchingSuppliers.map((sp, idx) => {
+                        const isCheapest = cheapestSupplier?.id === sp.id;
+                        const marginKES = selectedProd.recommendedRetailPrice - sp.price;
+                        const marginPercent = ((marginKES / selectedProd.recommendedRetailPrice) * 100).toFixed(1);
+
+                        return (
+                          <div
+                            key={sp.id}
+                            className={`p-3 rounded-md border text-xs bg-white space-y-1.5 transition-shadow ${
+                              isCheapest ? 'border-emerald-500 ring-1 ring-emerald-500/20 shadow-xs' : 'border-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-1.5">
+                                <span className="font-bold text-slate-900">{sp.wholesalerName}</span>
+                                {isCheapest && (
+                                  <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded uppercase">
+                                    Best Rate
+                                  </span>
+                                )}
+                              </div>
+                              <span className="font-mono text-[10px] text-slate-400">sp_id: {sp.id}</span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-100">
+                              <div>
+                                <span className="text-[10px] text-slate-500 block font-mono">Wholesale Price</span>
+                                <span className="font-bold text-slate-900 font-mono">KES {sp.price.toLocaleString()}</span>
+                              </div>
+
+                              <div>
+                                <span className="text-[10px] text-slate-500 block font-mono">Available Stock</span>
+                                <span className={`font-bold font-mono ${sp.stockQty > 20 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                  {sp.stockQty} units
+                                </span>
+                              </div>
+
+                              <div>
+                                <span className="text-[10px] text-slate-500 block font-mono">Duka Gross Margin</span>
+                                <span className="font-bold text-emerald-700 font-mono">
+                                  KES {marginKES} ({marginPercent}%)
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
+                              <span>Distance: <strong className="text-slate-700">{sp.distanceKm} km</strong> from centroid</span>
+                              <span>Updated: {sp.updatedAt}</span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="p-2.5 bg-blue-50 rounded border border-blue-200/60 text-[11px] text-blue-900 leading-snug">
+                    <span className="font-bold">Dynamic Routing:</span> Wholesalers update their pricing, stock levels, and active status thousands of times per day.
+                    Because inventory is decoupled, zero changes touch the Master Product record or NLP search index!
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* The 4 Architectural Pillars */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2 shadow-2xs">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">1</div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase">Eliminates Catalog Duplication & Fragmented SKUs</h4>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  In flawed marketplace architectures, each vendor registers a new product row. 40 wholesalers stocking Jogoo 2kg creates 40 duplicate products with erratic titles (&quot;Jogoo 2kg&quot;, &quot;JOGOO BALE&quot;).
+                  Wayno maintains exactly <strong>1 single canonical product entity</strong> regardless of how many wholesale depots supply it.
+                </p>
+              </div>
+
+              <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2 shadow-2xs">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-xs">2</div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase">Isolates NLP & Trigram Search from Stock Churn</h4>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  The inverted index and <code className="font-mono text-[11px] text-slate-800 bg-slate-100 px-1 py-0.5 rounded">pg_trgm</code> GIN indexes index the Master Product document once.
+                  High-frequency depot inventory decrements (every 2-3 seconds) mutate only the small <code className="font-mono text-[11px] text-slate-800 bg-slate-100 px-1 py-0.5 rounded">supplier_products</code> table, eliminating expensive search index rebuilds.
+                </p>
+              </div>
+
+              <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2 shadow-2xs">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs">3</div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase">Instant Multi-Depot Stockout Failover</h4>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  If Eastleigh Depot sells out of Blue Band (<code className="font-mono text-[11px] text-slate-800 bg-slate-100 px-1 py-0.5 rounded">available_stock = 0</code>),
+                  the product never disappears from merchant search! The checkout routing engine instantly switches to Industrial Area Hub in <strong>0.4ms</strong> with zero broken links or cart crashes.
+                </p>
+              </div>
+
+              <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2 shadow-2xs">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded bg-purple-100 text-purple-800 flex items-center justify-center font-bold text-xs">4</div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase">Transparent Duka Margins & Price Discovery</h4>
+                </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Because every wholesale offer points to the exact same canonical product, informal dukas can transparently compare wholesale prices against the canonical Recommended Retail Price (RRP),
+                  ensuring they capture maximum retail markup (KES 150 - KES 350 per carton).
+                </p>
+              </div>
+            </div>
+
+            {/* Relational Schema SQL Definition */}
+            <div className="bg-slate-900 text-slate-100 rounded-lg p-4 font-mono text-xs border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-slate-400 pb-2 border-b border-slate-800">
+                <span className="font-bold text-emerald-400">PostgreSQL Relational Schema DDL & Dynamic Join Query</span>
+                <span className="text-[10px]">Foreign Key 1:N Decoupling</span>
+              </div>
+              <pre className="text-slate-300 overflow-x-auto text-[11px] leading-relaxed">
+{`-- 1. Master Product Identity (Stored Once, Supplier-Agnostic)
+CREATE TABLE products (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    brand VARCHAR(128) NOT NULL,
+    pack_size VARCHAR(64) NOT NULL,
+    barcode VARCHAR(64) UNIQUE NOT NULL, -- GS1 EAN-13
+    recommended_retail_price NUMERIC(10, 2) NOT NULL,
+    aliases TEXT[] DEFAULT '{}' -- Swahili & Sheng keywords
+);
+
+-- 2. Supplier Availability (1:N Volatile Depot Listings)
+CREATE TABLE supplier_products (
+    id VARCHAR(64) PRIMARY KEY,
+    product_id VARCHAR(64) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    wholesaler_id VARCHAR(64) NOT NULL REFERENCES wholesalers(id) ON DELETE CASCADE,
+    wholesale_price NUMERIC(10, 2) NOT NULL,
+    available_stock INTEGER NOT NULL DEFAULT 0,
+    is_available BOOLEAN NOT NULL DEFAULT TRUE,
+    distance_km NUMERIC(5, 2) NOT NULL DEFAULT 0.0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT uq_wholesaler_product UNIQUE (wholesaler_id, product_id)
+);
+
+-- 3. Dynamic Cheapest-Available Supplier Resolution Query (0.4ms Index Scan)
+SELECT 
+    p.id AS product_id,
+    p.name AS canonical_name,
+    p.pack_size,
+    p.recommended_retail_price,
+    sp.wholesaler_id,
+    sp.wholesale_price,
+    sp.available_stock,
+    (p.recommended_retail_price - sp.wholesale_price) AS duka_margin_kes
+FROM products p
+JOIN supplier_products sp ON p.id = sp.product_id
+WHERE p.id = $1 
+  AND sp.is_available = TRUE 
+  AND sp.available_stock > 0
+ORDER BY sp.wholesale_price ASC
+LIMIT 1;`}
+              </pre>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

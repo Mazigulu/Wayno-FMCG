@@ -17,11 +17,19 @@ import {
   ShoppingBag,
   Tag,
   Star,
-  ArrowRight
+  ArrowRight,
+  Truck,
+  Bike,
+  Layers
 } from 'lucide-react';
-import { CartItem, Order, RetailerShop, Product, SupplierProduct } from '../types/wayno';
-import { simulateMpesaStkPush } from '../services/orderEngine';
+import { CartItem, Order, RetailerShop, Product, SupplierProduct, OrderItem } from '../types/wayno';
+import { paymentService } from '../services/paymentService';
 import { PRODUCTS, SUPPLIER_PRODUCTS } from '../data/mockData';
+import {
+  calculateOrderPayload,
+  generateOfflineDeliveryCode,
+  VirtualStockReservationManager,
+} from '../services/orderEngine';
 import { 
   getPromotionalPlacements, 
   recordPromotionalClick, 
@@ -55,9 +63,12 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   addToCart,
 }) => {
   const [phoneNumber, setPhoneNumber] = useState(currentShop.phone.replace(/\s+/g, ''));
+  const [selectedProvider, setSelectedProvider] = useState<string>('M-Pesa');
   const [paymentStep, setPaymentStep] = useState<'REVIEW' | 'PROCESSING_STK' | 'SUCCESS'>('REVIEW');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
+
+  const availableProviders = paymentService.listRegisteredProviders();
 
   // Check for active checkout upsell promotions
   const upsellPlacements = getPromotionalPlacements().filter(
@@ -97,6 +108,19 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   const primaryWholesaler = cart[0]?.supplierProduct.wholesalerName || 'Eastleigh Mega Wholesale Depot';
   const primaryWholesalerLocationId = cart[0]?.supplierProduct.wholesalerLocationId || 'ws_eastleigh';
 
+  const orderItems: OrderItem[] = cart.map((item) => ({
+    productId: item.product.id,
+    productName: item.product.name,
+    packSize: item.product.packSize,
+    quantity: item.quantity,
+    unitPrice: item.supplierProduct.price,
+    totalPrice: item.supplierProduct.price * item.quantity,
+    wholesalerLocationId: item.supplierProduct.wholesalerLocationId,
+    wholesalerName: item.supplierProduct.wholesalerName,
+  }));
+
+  const payloadAnalysis = calculateOrderPayload(orderItems);
+
   const handleInitiatePayment = async () => {
     if (!phoneNumber || phoneNumber.length < 9) {
       setErrorMessage('Please enter a valid Safaricom M-Pesa phone number');
@@ -110,6 +134,21 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
     const orderId = `WN-${Date.now().toString().slice(-6)}`;
 
+    // PRODUCTION HARDENING: Lock virtual inventory with safety buffer check
+    const reserveAttempt = VirtualStockReservationManager.reserveStock(
+      orderId,
+      primaryWholesalerLocationId,
+      cart.map((c) => ({ productId: c.product.id, quantity: c.quantity }))
+    );
+
+    if (!reserveAttempt.success) {
+      setErrorMessage(reserveAttempt.error || 'Inventory contention: Items requested unavailable or below depot buffer.');
+      setPaymentStep('REVIEW');
+      return;
+    }
+
+    const offlineDeliveryCode = generateOfflineDeliveryCode(orderId, phoneNumber);
+
     // Build order object
     const newOrder: Order = {
       id: orderId,
@@ -117,16 +156,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       shopName: currentShop.name,
       shopAddress: currentShop.address,
       retailerPhone: phoneNumber,
-      items: cart.map((item) => ({
-        productId: item.product.id,
-        productName: item.product.name,
-        packSize: item.product.packSize,
-        quantity: item.quantity,
-        unitPrice: item.supplierProduct.price,
-        totalPrice: item.supplierProduct.price * item.quantity,
-        wholesalerLocationId: item.supplierProduct.wholesalerLocationId,
-        wholesalerName: item.supplierProduct.wholesalerName,
-      })),
+      items: orderItems,
       subtotal,
       deliveryFee,
       totalAmount,
@@ -144,25 +174,36 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
           note: `M-Pesa STK push dispatched to ${phoneNumber}`,
         },
       ],
-      paymentMethod: 'M-PESA',
+      paymentMethod: selectedProvider.toUpperCase().replace(/\s+/g, '_') as any,
       wholesalerLocationId: primaryWholesalerLocationId,
       wholesalerName: primaryWholesaler,
       pickupOtp,
       deliveryOtp,
+      offlineDeliveryCode,
       estimatedDeliveryMins: 28,
+      totalWeightKg: payloadAnalysis.totalWeightKg,
+      totalVolumeCbm: payloadAnalysis.totalVolumeCbm,
+      assignedVehicleType: payloadAnalysis.assignedVehicleType,
+      dispatchSplitsCount: payloadAnalysis.dispatchSplitsCount,
+      stockReservedUntil: reserveAttempt.reservedUntil,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     try {
-      const result = await simulateMpesaStkPush(newOrder, phoneNumber);
+      // SECTION 25: Application talks strictly to PaymentService abstraction
+      const result = await paymentService.initiatePayment({
+        order: newOrder,
+        phoneNumber,
+      }, selectedProvider);
+
       if (result.success) {
         newOrder.status = 'PAID';
-        newOrder.paymentId = result.paymentRecord.id;
+        newOrder.paymentId = result.paymentRecord.paymentId || result.paymentRecord.id;
         newOrder.stateHistory.push({
           state: 'PAID',
           timestamp: new Date().toISOString(),
-          note: `M-Pesa Receipt ${result.mpesaReceiptNumber} confirmed with idempotency`,
+          note: `${result.provider} Reference ${result.providerReference} confirmed via PaymentService abstraction`,
         });
         newOrder.stateHistory.push({
           state: 'FULFILLMENT_PENDING',
@@ -176,7 +217,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
       }
     } catch (err: any) {
       setPaymentStep('REVIEW');
-      setErrorMessage(err.message || 'M-Pesa transaction failed or timed out. Please retry.');
+      setErrorMessage(err.message || `${selectedProvider} transaction failed or timed out. Please retry.`);
     }
   };
 
@@ -295,6 +336,38 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                     </p>
                   </div>
 
+                  {/* Production Resiliency: Cargo Payload & Vehicle Routing */}
+                  <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs space-y-2">
+                    <div className="flex items-center justify-between text-slate-700 font-semibold">
+                      <span className="flex items-center space-x-1.5">
+                        {payloadAnalysis.assignedVehicleType === 'PICKUP_VAN' ? (
+                          <Truck className="w-3.5 h-3.5 text-slate-700" />
+                        ) : (
+                          <Bike className="w-3.5 h-3.5 text-slate-700" />
+                        )}
+                        <span>Cargo Logistics & Fleet Dispatch</span>
+                      </span>
+                      <span className="text-[10px] bg-emerald-50 border border-emerald-300 text-emerald-800 font-mono font-bold px-1.5 py-0.5 rounded">
+                        {payloadAnalysis.assignedVehicleType.replace('_', ' ')}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px] bg-white border border-slate-200 rounded p-2">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Total Weight</span>
+                        <span className="font-mono font-bold text-slate-900">{payloadAnalysis.totalWeightKg} kg</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Total Volume</span>
+                        <span className="font-mono font-bold text-slate-900">{payloadAnalysis.totalVolumeCbm} m³</span>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600 leading-tight">
+                      {payloadAnalysis.notes}
+                    </p>
+                  </div>
+
                   {/* Promotional Checkout Upsell Placement */}
                   {activeUpsell && (
                     <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded p-3 text-xs space-y-2 shadow-2xs">
@@ -345,11 +418,45 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                     </div>
                   </div>
 
-                  {/* M-Pesa Details */}
+                  {/* Section 25: Payment Provider Selection (Abstraction) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-medium text-slate-700">
+                        Payment Provider
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        PaymentService Abstraction
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {availableProviders.map((prov) => {
+                        const isSelected = selectedProvider.toLowerCase() === prov.name.toLowerCase();
+                        return (
+                          <button
+                            key={prov.name}
+                            type="button"
+                            onClick={() => setSelectedProvider(prov.name)}
+                            className={`px-2.5 py-1.5 rounded text-left border text-xs transition-colors cursor-pointer ${
+                              isSelected
+                                ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-2xs'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span className="block font-medium truncate">{prov.name}</span>
+                            <span className={`text-[9px] block ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
+                              {prov.capabilities.supportsStkPush ? 'Instant STK' : 'Multi-Rail'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Provider Billing Details */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-slate-700 flex items-center justify-between">
-                      <span>M-Pesa STK Prompt Number</span>
-                      <span className="text-[10px] text-emerald-700 font-medium">Safaricom Instant</span>
+                      <span>{selectedProvider} Prompt MSISDN / Identifier</span>
+                      <span className="text-[10px] text-emerald-700 font-medium">Instant Callback</span>
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
@@ -382,16 +489,16 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                 <Loader2 className="w-6 h-6 animate-spin" />
               </div>
               <div className="space-y-1">
-                <h4 className="font-bold text-sm text-slate-900">Sending M-Pesa STK Prompt...</h4>
+                <h4 className="font-bold text-sm text-slate-900">Initiating {selectedProvider} Prompt...</h4>
                 <p className="text-xs text-slate-500">
-                  Please check your phone <span className="font-mono text-slate-900 font-semibold">{phoneNumber}</span> and enter your M-Pesa PIN for KES {totalAmount.toLocaleString()}.
+                  Please check your device <span className="font-mono text-slate-900 font-semibold">{phoneNumber}</span> and confirm authorization for KES {totalAmount.toLocaleString()}.
                 </p>
               </div>
 
               <div className="bg-slate-50 border border-slate-200 p-2.5 rounded max-w-xs mx-auto text-left text-[11px] font-mono text-slate-600 space-y-0.5">
                 <div>• Idempotency key verified: OK</div>
-                <div>• Payment provider: Safaricom Daraja API</div>
-                <div>• Auto-reconciling transaction ledger...</div>
+                <div>• Routed via: PaymentService → {selectedProvider}</div>
+                <div>• Two-tier transaction ledger sync: ACTIVE</div>
               </div>
             </div>
           )}
