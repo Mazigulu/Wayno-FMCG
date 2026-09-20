@@ -31,6 +31,7 @@ import {
   GeoDeliveryZoneInfo,
   FMCG_SYNONYM_CLUSTERS
 } from './invertedIndex';
+import { geoEngine } from './hierarchicalGeofenceEngine';
 
 // ---------------------------------------------------------------------------
 // 0. ACTIVE PROMOTIONAL PLACEMENTS REGISTRY (FMCG SPONSORED ADS & TRADE PROMOS)
@@ -1072,6 +1073,19 @@ export function executeWaynoSearch(
 
     // If candidate has sufficient text relevance
     if (textScore >= 25) {
+      // 5.5 Supply Node Tree Classification & Subtree Geofence Check
+      // Evaluates whether the retailer shop is authorized within the product's Supply Node Tree
+      // (ROOT: National Grid, REGION: Regional Corridor, LOCAL_NODE: 20 km Local Territory)
+      const nodeEligibility = geoEngine.evaluateShopNodeEligibility(
+        { lat: userLat, lng: userLng },
+        product
+      );
+
+      if (!nodeEligibility.isEligible) {
+        // Retailer is outside this product's authorized tree branch/territory; prune from candidate list
+        continue;
+      }
+
       // Find suppliers stocking this SKU
       const suppliersForProd = SUPPLIER_PRODUCTS.filter(
         (sp) => sp.productId === product.id && sp.availability && sp.stockQty > 0
@@ -1079,7 +1093,7 @@ export function executeWaynoSearch(
 
       if (suppliersForProd.length > 0) {
         // Calculate dynamic real-time distance from user shop to each wholesaler
-        const enrichedSuppliers = suppliersForProd.map((sp) => {
+        let enrichedSuppliers = suppliersForProd.map((sp) => {
           const wholesaler = WHOLESALERS.find((w) => w.id === sp.wholesalerLocationId);
           const distanceKm = wholesaler 
             ? calculateDistanceKm(userLat, userLng, wholesaler.latitude, wholesaler.longitude)
@@ -1090,6 +1104,17 @@ export function executeWaynoSearch(
             distanceKm,
           };
         });
+
+        // If product is a LOCAL_NODE commodity or specifies a maximum search radius, enforce local corridor threshold
+        const isLocalCommodity = nodeEligibility.productNodeLevel === 'LOCAL_NODE' || product.searchScope === 'LOCAL' || Boolean(product.maxSearchRadiusKm);
+        if (isLocalCommodity) {
+          const maxRadius = product.maxSearchRadiusKm || 20;
+          enrichedSuppliers = enrichedSuppliers.filter((s) => s.distanceKm <= maxRadius);
+          if (enrichedSuppliers.length === 0) {
+            // No wholesaler within local corridor radius (e.g. Soko Supreme not stocked by local wholesaler)
+            continue;
+          }
+        }
 
         // Sort suppliers based on active ranking strategy
         const sortedSuppliers = [...enrichedSuppliers].sort((a, b) => {
@@ -1224,6 +1249,15 @@ export function executeWaynoSearch(
           targetedBadgeText: targetingEval?.exclusiveBadgeText,
           appliedCampaignId: isEligiblePlacement ? activePlacement?.id : undefined,
           deliveryZone: evaluateGeoDeliveryZone(bestSupplier.distanceKm),
+          searchScope: product.searchScope || 'NATIONAL',
+          targetServiceZones: product.targetServiceZones,
+          supplyNodeLevel: nodeEligibility.productNodeLevel,
+          primarySupplyNodeId: product.primarySupplyNodeId || nodeEligibility.assignedNodes[0]?.id,
+          assignedSupplyNode: nodeEligibility.assignedNodes[0],
+          shopSupplyNode: nodeEligibility.shopNode,
+          treeClassificationPath: nodeEligibility.assignedNodes[0] 
+            ? geoEngine.getNodePath(nodeEligibility.assignedNodes[0].id) 
+            : 'ROOT-KE-01',
         });
       }
     }
@@ -1427,6 +1461,24 @@ export function executeWaynoSearch(
       }
       if (appliedFilters!.wholesalerLocationId && item.bestSupplierProduct.wholesalerLocationId !== appliedFilters!.wholesalerLocationId) {
         return false;
+      }
+      if (appliedFilters!.searchScope && appliedFilters!.searchScope !== 'ALL') {
+        const itemScope = item.searchScope || item.product.searchScope || 'NATIONAL';
+        if (itemScope !== appliedFilters!.searchScope) {
+          return false;
+        }
+      }
+      if (appliedFilters!.supplyNodeLevel && appliedFilters!.supplyNodeLevel !== 'ALL') {
+        const itemLevel = item.supplyNodeLevel || item.product.supplyNodeLevel || 'ROOT';
+        if (itemLevel !== appliedFilters!.supplyNodeLevel) {
+          return false;
+        }
+      }
+      if (appliedFilters!.supplyNodeId) {
+        const itemNodeId = item.primarySupplyNodeId || item.product.primarySupplyNodeId;
+        if (itemNodeId !== appliedFilters!.supplyNodeId) {
+          return false;
+        }
       }
       return true;
     });

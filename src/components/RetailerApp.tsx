@@ -393,6 +393,27 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
       {/* ========================================================================= */}
       {currentPage === 'catalog' && (
         <div className="space-y-4">
+          {/* Zero-Touch Wholesale Sourcing Assurance Banner */}
+          <div className="bg-emerald-50/80 border border-emerald-200 rounded-md p-3 flex items-center justify-between text-xs gap-3">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-7 h-7 rounded bg-emerald-700 text-white flex items-center justify-center font-bold shrink-0">
+                <Sparkles className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <span className="font-bold text-emerald-950 block text-xs">
+                  Zero-Touch Sourcing Guarantee
+                </span>
+                <p className="text-[11px] text-emerald-800">
+                  You never have to choose between wholesalers. Wayno automatically secures the lowest rate from nearby depots and coordinates doorstep delivery.
+                </p>
+              </div>
+            </div>
+            <div className="hidden sm:flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-900 bg-white border border-emerald-200 px-2.5 py-1 rounded shadow-2xs shrink-0">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>100% Automated Depot Routing</span>
+            </div>
+          </div>
+
           {/* Active Order Progress Banner if any */}
           {activeOrders.length > 0 && (
             <div className="bg-white border border-slate-200 rounded-md p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-slate-900">
@@ -699,15 +720,40 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  {/* Supply Node Tree Tier Filter */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-600 uppercase">Supply Node Tree Tier</label>
+                    <div className="flex items-center space-x-1 flex-wrap gap-y-1">
+                      {[
+                        { label: 'All Tiers', val: undefined },
+                        { label: '🌐 Root (National)', val: 'ROOT' },
+                        { label: '🏛️ Regional', val: 'REGION' },
+                        { label: '📍 Local 20km', val: 'LOCAL_NODE' },
+                      ].map((tier) => (
+                        <button
+                          key={tier.label}
+                          onClick={() => setSearchFilters((prev) => ({ ...prev, supplyNodeLevel: tier.val as any }))}
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium border cursor-pointer ${
+                            (searchFilters.supplyNodeLevel === tier.val || (!searchFilters.supplyNodeLevel && tier.val === undefined))
+                              ? 'bg-slate-900 text-white border-slate-900'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {tier.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Geo-Distance Corridor Filter */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 uppercase">Max Depot Distance</label>
                     <div className="flex items-center space-x-1 flex-wrap gap-y-1">
                       {[
-                        { label: 'All Nairobi', val: undefined },
-                        { label: '≤ 3km (Zone 1 Boda)', val: 3 },
-                        { label: '≤ 6km (Zone 2 Express)', val: 6 },
+                        { label: 'All Corridors', val: undefined },
+                        { label: '≤ 3km (Zone 1)', val: 3 },
+                        { label: '≤ 6km (Zone 2)', val: 6 },
                       ].map((dist) => (
                         <button
                           key={dist.label}
@@ -727,7 +773,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                   {/* Stock & Rebates Toggles */}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-600 uppercase">Availability & Deals</label>
-                    <div className="flex items-center space-x-2 pt-0.5">
+                    <div className="flex flex-col space-y-1 pt-0.5">
                       <label className="flex items-center space-x-1.5 cursor-pointer text-slate-800">
                         <input
                           type="checkbox"
@@ -735,7 +781,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           onChange={(e) => setSearchFilters((prev) => ({ ...prev, inStockOnly: e.target.checked || undefined }))}
                           className="rounded text-slate-900 focus:ring-slate-900"
                         />
-                        <span className="font-medium">In Stock at Depot ({searchResult.facets.inStockCount})</span>
+                        <span className="font-medium">In Stock ({searchResult.facets.inStockCount})</span>
                       </label>
                       <label className="flex items-center space-x-1.5 cursor-pointer text-slate-800">
                         <input
@@ -744,7 +790,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           onChange={(e) => setSearchFilters((prev) => ({ ...prev, promotionsOnly: e.target.checked || undefined }))}
                           className="rounded text-slate-900 focus:ring-slate-900"
                         />
-                        <span className="font-medium">Rebates Only ({searchResult.facets.promotionsCount})</span>
+                        <span className="font-medium">Rebates ({searchResult.facets.promotionsCount})</span>
                       </label>
                     </div>
                   </div>
@@ -991,8 +1037,8 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                 {/* Dispatch Demand Alert */}
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                   <div>
-                    <div className="font-semibold text-slate-900">Request Wholesalers to Stock this SKU</div>
-                    <div className="text-[11px] text-slate-500">Sends instant restock telemetry to Eastleigh & Industrial Area depots.</div>
+                    <div className="font-semibold text-slate-900">Request Wayno Network to Stock this SKU</div>
+                    <div className="text-[11px] text-slate-500">Sends instant restock telemetry across all in-range regional fulfillment depots.</div>
                   </div>
                   <button
                     onClick={() => setDemandAlertSent(true)}
@@ -1001,7 +1047,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                       demandAlertSent ? 'bg-emerald-600 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white'
                     }`}
                   >
-                    {demandAlertSent ? 'Demand Signal Sent!' : 'Alert Wholesalers'}
+                    {demandAlertSent ? 'Restock Signal Sent!' : 'Request SKU Restock'}
                   </button>
                 </div>
 
@@ -1116,8 +1162,34 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           </p>
                         </div>
 
-                        {/* Match Badges & Aliases */}
+                        {/* Match Badges & Supply Node Tree Classification */}
                         <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                          {/* Tree Tier Badge */}
+                          {(item.supplyNodeLevel === 'LOCAL_NODE' || product.supplyNodeLevel === 'LOCAL_NODE' || item.searchScope === 'LOCAL' || product.searchScope === 'LOCAL') ? (
+                            <span 
+                              className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-emerald-200 flex items-center space-x-1"
+                              title={item.treeClassificationPath ? `Tree Path: ${item.treeClassificationPath}` : 'Level 2: Geofenced Local Node (≤20km)'}
+                            >
+                              <MapPin className="w-2.5 h-2.5 text-emerald-700" />
+                              <span>Local Node (≤20km)</span>
+                            </span>
+                          ) : (item.supplyNodeLevel === 'REGION' || product.supplyNodeLevel === 'REGION') ? (
+                            <span 
+                              className="bg-purple-50 text-purple-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-purple-200 flex items-center space-x-1"
+                              title={item.treeClassificationPath ? `Tree Path: ${item.treeClassificationPath}` : 'Level 1: Regional Supply Corridor'}
+                            >
+                              <Layers className="w-2.5 h-2.5 text-purple-700" />
+                              <span>Regional Corridor</span>
+                            </span>
+                          ) : (
+                            <span 
+                              className="bg-blue-50 text-blue-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-blue-200 flex items-center space-x-1"
+                              title="Level 0: Kenya National FMCG Grid (Universal)"
+                            >
+                              <Globe className="w-2.5 h-2.5 text-blue-700" />
+                              <span>National Grid</span>
+                            </span>
+                          )}
                           {relevanceScore && (
                             <span className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-emerald-200">
                               Match: {relevanceScore}/100
@@ -1138,14 +1210,15 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           ))}
                         </div>
 
-                        {/* Supplier & Geo-Delivery Zone Info */}
+                        {/* Autonomous Sourcing & Delivery Zone Info */}
                         <div className="bg-slate-50 border border-slate-200 rounded p-2 text-xs space-y-1.5">
                           <div className="flex items-center justify-between">
-                            <span className="text-slate-700 font-medium truncate max-w-[170px] text-[11px]">
-                              {bestSupplierProduct.wholesalerName}
+                            <span className="text-emerald-800 font-semibold truncate max-w-[170px] text-[11px] flex items-center space-x-1">
+                              <Sparkles className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span>Auto-Sourced (Best Rate)</span>
                             </span>
                             <span className="text-slate-500 font-mono text-[10px]">
-                              {bestSupplierProduct.distanceKm} km away
+                              {bestSupplierProduct.distanceKm} km transit
                             </span>
                           </div>
 
@@ -1167,8 +1240,9 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           )}
 
                           <div className="flex items-center justify-between text-[10px]">
-                            <span className="text-slate-400">
-                              {allSuppliers.length > 1 ? `+${allSuppliers.length - 1} other wholesale hub(s)` : 'Direct distributor stock'}
+                            <span className="text-slate-500 flex items-center space-x-1">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <span>Automated Depot Dispatch</span>
                             </span>
                             <span className="text-emerald-700 font-medium flex items-center space-x-1">
                               <Clock className="w-2.5 h-2.5" />
@@ -1312,7 +1386,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          Depot: <span className="font-medium text-slate-800">{order.wholesalerName}</span> · Placed {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          Fulfilled by: <span className="font-medium text-slate-800">Wayno Network ({order.wholesalerName})</span> · Placed {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
 
@@ -1496,9 +1570,15 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                     <span className="font-mono text-slate-800">{currentShop.longitude}</span>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Your duka is mapped to its primary 20 km local supply node. Local-first procurement queries your anchor wholesaler, with controlled escalation to regional parent hubs during stockouts.
-                </p>
+                <div className="bg-emerald-50 border border-emerald-200 rounded p-3 text-xs space-y-1.5 text-emerald-950">
+                  <div className="flex items-center space-x-1.5 font-bold text-emerald-900">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Zero-Touch Autonomous Sourcing Model</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    At no point do you need to browse, compare, or choose between wholesalers. Wayno's geofencing algorithms automatically query all in-range wholesale depots, secure the lowest price, calculate optimal vehicle payload, and dispatch riders directly to your duka. You are billed a single unified amount and receive your goods at your door.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1529,14 +1609,22 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
               </div>
 
               <div className="bg-white border border-slate-200 rounded-md p-4 space-y-2 text-xs">
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Assigned Wholesale Depots
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Background Supply Depots
+                  </h3>
+                  <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded font-mono">
+                    Auto-Routed
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Depots servicing your 20 km zone in the background. Wayno routes orders autonomously without requiring merchant action:
+                </p>
                 <div className="space-y-1.5">
                   {WHOLESALERS.map((w) => (
                     <div key={w.id} className="p-2 rounded bg-slate-50 border border-slate-200">
                       <span className="font-semibold text-slate-900 block text-[11px]">{w.name}</span>
-                      <span className="text-[10px] text-slate-500">{w.address} · Avg Prep {w.avgPrepTimeMinutes}m</span>
+                      <span className="text-[10px] text-slate-500">{w.address} · Avg Dispatch {w.avgPrepTimeMinutes}m</span>
                     </div>
                   ))}
                 </div>

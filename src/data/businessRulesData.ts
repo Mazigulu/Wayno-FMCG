@@ -6,9 +6,9 @@ export const DETAILED_BUSINESS_RULES: BusinessRuleSpec[] = [
     id: 'rule_01_supplier_selection',
     ruleNumber: 1,
     category: 'FULFILLMENT_OPERATIONS',
-    title: 'How Supplier Selection Works',
-    summary: 'Automated multi-factor candidate scoring and order routing algorithm determining the optimal wholesale depot for each item or basket.',
-    businessObjective: 'Eliminates order friction and split delivery overhead by matching duka retailers with the most cost-effective, geographically proximate, and fulfillment-reliable wholesaler.',
+    title: 'How Supplier Selection Works (Zero-Touch Retailer Sourcing)',
+    summary: 'Automated multi-factor candidate scoring and order routing algorithm determining the optimal wholesale depot for each item or basket. The retailer is never involved in choosing wholesalers; Wayno automatically sources the best rate and dispatches delivery.',
+    businessObjective: 'Eliminates order friction, vendor negotiation overhead, and split delivery costs by shielding duka shopkeepers from wholesale depot selection. Wayno autonomously matches baskets to the optimal wholesaler based on price, proximity, stock reliability, and delivery speed.',
     keyFormulasOrParameters: [
       { label: 'Composite Scoring Formula', value: 'Score = (DistanceScore × 0.30) + (PriceScore × 0.25) + (StockCertainty × 0.20) + (Reliability × 0.15) + (PrepSpeed × 0.10)' },
       { label: 'Basket Consolidation Bonus', value: '+15 points if the wholesaler already stocks other items in the active basket' },

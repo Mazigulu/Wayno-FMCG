@@ -22,10 +22,18 @@ import {
   ArrowRight,
   Store,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  Globe,
+  MapPin,
+  Compass,
+  Network,
+  ChevronRight,
+  GitCommit,
+  Radio
 } from 'lucide-react';
-import { Product, SupplierProduct } from '../../types/wayno';
+import { Product, SupplierProduct, ProductSearchScope, SupplyNode, SupplyNodeLevel } from '../../types/wayno';
 import { useWayno } from '../../context/WaynoContext';
+import { SUPPLY_NODES, geoEngine } from '../../services/hierarchicalGeofenceEngine';
 
 const KENYAN_FMCG_IMAGE_PRESETS = [
   { name: 'Maize Flour', url: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80' },
@@ -51,6 +59,8 @@ export const ProductsMasterCatalog: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [brandFilter, setBrandFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+  const [nodeTierFilter, setNodeTierFilter] = useState<'ALL' | 'ROOT' | 'REGION' | 'LOCAL_NODE'>('ALL');
+  const [specificNodeFilter, setSpecificNodeFilter] = useState<string>('ALL');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   // Modal states
@@ -76,6 +86,12 @@ export const ProductsMasterCatalog: React.FC = () => {
   const [formKeywords, setFormKeywords] = useState('');
   const [formAliases, setFormAliases] = useState('');
   const [formStatus, setFormStatus] = useState<'ACTIVE' | 'INACTIVE'>('ACTIVE');
+  
+  // Supply Node Tree Classification State
+  const [formNodeLevel, setFormNodeLevel] = useState<SupplyNodeLevel>('ROOT');
+  const [formPrimaryNodeId, setFormPrimaryNodeId] = useState<string>('root_kenya');
+  const [formAssignedNodeIds, setFormAssignedNodeIds] = useState<string[]>(['root_kenya']);
+  const [formMaxRadiusKm, setFormMaxRadiusKm] = useState<number>(20);
 
   const brands = Array.from(new Set(products.map(p => p.brand))).filter(Boolean);
 
@@ -96,6 +112,10 @@ export const ProductsMasterCatalog: React.FC = () => {
     setFormKeywords('');
     setFormAliases('');
     setFormStatus('ACTIVE');
+    setFormNodeLevel('ROOT');
+    setFormPrimaryNodeId('root_kenya');
+    setFormAssignedNodeIds(['root_kenya']);
+    setFormMaxRadiusKm(20);
   };
 
   const openCreateModal = () => {
@@ -121,6 +141,38 @@ export const ProductsMasterCatalog: React.FC = () => {
     setFormKeywords(product.keywords ? product.keywords.join(', ') : '');
     setFormAliases(product.aliases ? product.aliases.join(', ') : '');
     setFormStatus(product.status === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE');
+
+    // Resolve Supply Node Tree placement
+    let level: SupplyNodeLevel = product.supplyNodeLevel || 'ROOT';
+    if (!product.supplyNodeLevel && product.searchScope) {
+      if (product.searchScope === 'LOCAL' || product.searchScope === 'LOCAL_NODE') level = 'LOCAL_NODE';
+      else if (product.searchScope === 'REGION') level = 'REGION';
+      else level = 'ROOT';
+    }
+    setFormNodeLevel(level);
+
+    let primaryNode = product.primarySupplyNodeId;
+    if (!primaryNode) {
+      if (level === 'ROOT') primaryNode = 'root_kenya';
+      else if (level === 'REGION') primaryNode = 'region_nairobi_metro';
+      else primaryNode = 'node_eastleigh_20km';
+    }
+    setFormPrimaryNodeId(primaryNode);
+
+    let assigned = product.assignedSupplyNodeIds ? [...product.assignedSupplyNodeIds] : [];
+    if (assigned.length === 0) {
+      if (product.targetServiceZones && product.targetServiceZones.length > 0) {
+        assigned = product.targetServiceZones.map(z => {
+          if (z.includes('east')) return 'node_eastleigh_20km';
+          if (z.includes('west')) return 'node_nairobi_west_20km';
+          return 'node_industrial_area_20km';
+        });
+      } else {
+        assigned = [primaryNode];
+      }
+    }
+    setFormAssignedNodeIds(assigned);
+    setFormMaxRadiusKm(product.maxSearchRadiusKm || 20);
     setIsCreateModalOpen(true);
   };
 
@@ -152,6 +204,13 @@ export const ProductsMasterCatalog: React.FC = () => {
       synonyms: aliasesArray,
       aliases: aliasesArray,
       status: formStatus,
+      // Supply Node Tree placement
+      supplyNodeLevel: formNodeLevel,
+      primarySupplyNodeId: formPrimaryNodeId,
+      assignedSupplyNodeIds: formAssignedNodeIds,
+      searchScope: formNodeLevel === 'ROOT' ? 'ROOT' : formNodeLevel,
+      targetServiceZones: formAssignedNodeIds,
+      maxSearchRadiusKm: formNodeLevel === 'LOCAL_NODE' ? Number(formMaxRadiusKm) : undefined,
     };
 
     if (editingProduct) {
@@ -186,7 +245,14 @@ export const ProductsMasterCatalog: React.FC = () => {
     const matchesBrand = brandFilter === 'ALL' || p.brand === brandFilter;
     const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
 
-    return matchesSearch && matchesCategory && matchesBrand && matchesStatus;
+    // Supply Node Tree filter
+    const pLevel: SupplyNodeLevel = p.supplyNodeLevel || (p.searchScope === 'LOCAL' || p.searchScope === 'LOCAL_NODE' ? 'LOCAL_NODE' : p.searchScope === 'REGION' ? 'REGION' : 'ROOT');
+    const matchesTier = nodeTierFilter === 'ALL' || pLevel === nodeTierFilter;
+    const matchesSpecificNode = specificNodeFilter === 'ALL' || 
+      p.primarySupplyNodeId === specificNodeFilter || 
+      p.assignedSupplyNodeIds?.includes(specificNodeFilter);
+
+    return matchesSearch && matchesCategory && matchesBrand && matchesStatus && matchesTier && matchesSpecificNode;
   });
 
   const activeCount = products.filter(p => p.status === 'ACTIVE').length;
@@ -310,6 +376,30 @@ export const ProductsMasterCatalog: React.FC = () => {
               <option value="ACTIVE">Active Only</option>
               <option value="INACTIVE">Inactive Only</option>
             </select>
+
+            <select
+              value={nodeTierFilter}
+              onChange={(e) => setNodeTierFilter(e.target.value as any)}
+              className="text-xs border border-slate-200 rounded py-1 px-2 bg-slate-50 text-slate-700 font-medium focus:outline-none"
+            >
+              <option value="ALL">All Tree Tiers</option>
+              <option value="ROOT">🌐 Level 0: ROOT (National Grid)</option>
+              <option value="REGION">🏛️ Level 1: REGION (Corridors)</option>
+              <option value="LOCAL_NODE">📍 Level 2: LOCAL_NODE (20km)</option>
+            </select>
+
+            <select
+              value={specificNodeFilter}
+              onChange={(e) => setSpecificNodeFilter(e.target.value)}
+              className="text-xs border border-slate-200 rounded py-1 px-2 bg-slate-50 text-slate-700 font-medium focus:outline-none"
+            >
+              <option value="ALL">All Supply Nodes ({SUPPLY_NODES.length})</option>
+              {SUPPLY_NODES.map(node => (
+                <option key={node.id} value={node.id}>
+                  {node.code}: {node.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -323,6 +413,7 @@ export const ProductsMasterCatalog: React.FC = () => {
                 <th className="py-2.5 px-3">Admin Pricing (Base / WS / RRP)</th>
                 <th className="py-2.5 px-3">Admin MOQ</th>
                 <th className="py-2.5 px-3">Platform Status</th>
+                <th className="py-2.5 px-3">Supply Node Tree Placement</th>
                 <th className="py-2.5 px-3">Wholesaler Feeds</th>
                 <th className="py-2.5 px-3 text-right">Section 13 Actions</th>
               </tr>
@@ -337,6 +428,12 @@ export const ProductsMasterCatalog: React.FC = () => {
                 const recWholesale = product.wholesalePrice || Math.round(product.recommendedRetailPrice * 0.85);
                 const base = product.basePrice || Math.round(product.recommendedRetailPrice * 0.8);
                 const moq = product.minimumOrderQuantity || 1;
+
+                // Supply Node metadata
+                const pLevel: SupplyNodeLevel = product.supplyNodeLevel || 
+                  (product.searchScope === 'LOCAL' || product.searchScope === 'LOCAL_NODE' ? 'LOCAL_NODE' : product.searchScope === 'REGION' ? 'REGION' : 'ROOT');
+                const primaryNode = product.primarySupplyNodeId ? geoEngine.getNodeById(product.primarySupplyNodeId) : undefined;
+                const nodeHierarchy = product.primarySupplyNodeId ? geoEngine.getNodePath(product.primarySupplyNodeId) : '';
 
                 return (
                   <tr 
@@ -404,7 +501,7 @@ export const ProductsMasterCatalog: React.FC = () => {
                     <td className="py-3 px-3">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
                         isActive 
-                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                           ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
                           : 'bg-rose-50 text-rose-800 border border-rose-200'
                       }`}>
                         {isActive ? 'ACTIVE' : 'INACTIVE'}
@@ -412,6 +509,48 @@ export const ProductsMasterCatalog: React.FC = () => {
                       <span className="text-[10px] text-slate-400 block mt-0.5">
                         {isActive ? 'Available to Wholesalers' : 'Wholesalers blocked'}
                       </span>
+                    </td>
+
+                    <td className="py-3 px-3">
+                      <div className="space-y-1">
+                        {pLevel === 'ROOT' ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-blue-50 text-blue-800 border border-blue-200">
+                              <Globe className="w-2.5 h-2.5 text-blue-600" />
+                              <span>ROOT: National Grid</span>
+                            </span>
+                            <span className="text-[10px] font-mono text-slate-500 block">
+                              ROOT-KE-01 • Universal Kenya
+                            </span>
+                          </div>
+                        ) : pLevel === 'REGION' ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-purple-50 text-purple-800 border border-purple-200">
+                              <Layers className="w-2.5 h-2.5 text-purple-600" />
+                              <span>REGION: Corridor</span>
+                            </span>
+                            <span className="text-[10px] text-purple-900 font-semibold block">
+                              {primaryNode?.code || 'REG-01'}: {primaryNode?.name.replace(' FMCG Distribution Region', '')}
+                            </span>
+                            <span className="text-[9px] text-slate-400 block">Subtree Descendants</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-0.5">
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <MapPin className="w-2.5 h-2.5 text-emerald-600" />
+                              <span>LOCAL_NODE (≤20km)</span>
+                            </span>
+                            <span className="text-[10px] text-emerald-900 font-semibold block line-clamp-1">
+                              {primaryNode?.code || 'NODE-01'}: {primaryNode?.name.split(' ')[0]}
+                            </span>
+                            {product.assignedSupplyNodeIds && product.assignedSupplyNodeIds.length > 1 && (
+                              <span className="text-[9px] text-slate-500 block font-mono">
+                                +{product.assignedSupplyNodeIds.length - 1} more local nodes
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </td>
 
                     <td className="py-3 px-3">
@@ -774,10 +913,317 @@ export const ProductsMasterCatalog: React.FC = () => {
                 </div>
               </div>
 
+              {/* 4. Supply Node Tree Classification (Searchability & Geofence Hierarchy) */}
+              <div className="space-y-3 pt-2">
+                <div className="border-b border-slate-100 pb-1.5 flex items-center justify-between">
+                  <h4 className="text-[11px] font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+                    <Network className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>4. Supply Node Tree Classification (Search Extent & Geofencing)</span>
+                  </h4>
+                  <span className="text-[10px] font-mono bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-semibold">
+                    HIERARCHICAL ENGINE
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200 rounded p-3.5 space-y-3.5">
+                  <div className="text-[11px] text-slate-600 leading-relaxed">
+                    Classify SKU position within the hierarchical <strong>Supply Node Tree</strong>. The platform search engine prunes ineligible items before supplier matching based on the duka's geofenced local node and tree ancestry.
+                  </div>
+
+                  {/* Level Selection Cards */}
+                  <div>
+                    <label className="block font-semibold text-slate-800 mb-1.5">
+                      Supply Node Tree Tier <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                      {/* Level 0: ROOT */}
+                      <div
+                        onClick={() => {
+                          setFormNodeLevel('ROOT');
+                          setFormPrimaryNodeId('root_kenya');
+                          setFormAssignedNodeIds(['root_kenya']);
+                        }}
+                        className={`p-3 rounded border cursor-pointer transition-all ${
+                          formNodeLevel === 'ROOT'
+                            ? 'bg-blue-50/80 border-blue-400 ring-1 ring-blue-500 text-blue-950 shadow-xs'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-xs flex items-center space-x-1.5">
+                            <Globe className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Level 0: ROOT</span>
+                          </span>
+                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-blue-100 text-blue-800 font-semibold">
+                            ROOT-KE-01
+                          </span>
+                        </div>
+                        <div className="font-semibold text-[11px] text-blue-900 mb-0.5">National Grid</div>
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          Universal nationwide visibility. Searchable by every duka and retailer across all nodes.
+                        </p>
+                      </div>
+
+                      {/* Level 1: REGION */}
+                      <div
+                        onClick={() => {
+                          setFormNodeLevel('REGION');
+                          setFormPrimaryNodeId('region_nairobi_metro');
+                          setFormAssignedNodeIds(['region_nairobi_metro']);
+                        }}
+                        className={`p-3 rounded border cursor-pointer transition-all ${
+                          formNodeLevel === 'REGION'
+                            ? 'bg-purple-50/80 border-purple-400 ring-1 ring-purple-500 text-purple-950 shadow-xs'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-xs flex items-center space-x-1.5">
+                            <Layers className="w-3.5 h-3.5 text-purple-600" />
+                            <span>Level 1: REGION</span>
+                          </span>
+                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold">
+                            CORRIDOR
+                          </span>
+                        </div>
+                        <div className="font-semibold text-[11px] text-purple-900 mb-0.5">Regional Subtree</div>
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          Regional corridor searchability. Available to dukas in all child local nodes in the region.
+                        </p>
+                      </div>
+
+                      {/* Level 2: LOCAL_NODE */}
+                      <div
+                        onClick={() => {
+                          setFormNodeLevel('LOCAL_NODE');
+                          setFormPrimaryNodeId('node_eastleigh_20km');
+                          setFormAssignedNodeIds(['node_eastleigh_20km']);
+                        }}
+                        className={`p-3 rounded border cursor-pointer transition-all ${
+                          formNodeLevel === 'LOCAL_NODE'
+                            ? 'bg-emerald-50/80 border-emerald-400 ring-1 ring-emerald-500 text-emerald-950 shadow-xs'
+                            : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-bold text-xs flex items-center space-x-1.5">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Level 2: LOCAL_NODE</span>
+                          </span>
+                          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                            ≤ 20 KM
+                          </span>
+                        </div>
+                        <div className="font-semibold text-[11px] text-emerald-900 mb-0.5">Local Territory</div>
+                        <p className="text-[10px] text-slate-500 leading-normal">
+                          Geofenced territory node. Confined strictly to retailer dukas within designated 20km nodes.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Level-Specific Anchor Node Configuration */}
+                  {formNodeLevel === 'ROOT' && (
+                    <div className="p-3 bg-blue-50/50 rounded border border-blue-200 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-blue-900 flex items-center space-x-1.5">
+                          <Globe className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Primary Supply Node Anchor:</span>
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded">
+                          ROOT-KE-01 (Kenya National FMCG Grid)
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-blue-800 flex items-center space-x-1.5 font-mono">
+                        <span>Hierarchy Tree Path:</span>
+                        <span className="bg-white/80 px-2 py-0.5 rounded border border-blue-200 text-blue-950">
+                          ROOT-KE-01 (Kenya National Grid) ➔ All Regional Corridors ➔ All 20km Local Nodes
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {formNodeLevel === 'REGION' && (
+                    <div className="p-3 bg-purple-50/50 rounded border border-purple-200 space-y-3 text-xs">
+                      <div>
+                        <label className="block font-semibold text-purple-950 mb-1">
+                          Select Regional Supply Corridor Anchor:
+                        </label>
+                        <select
+                          value={formPrimaryNodeId}
+                          onChange={(e) => {
+                            setFormPrimaryNodeId(e.target.value);
+                            setFormAssignedNodeIds([e.target.value]);
+                          }}
+                          className="w-full border border-purple-300 rounded px-2.5 py-1.5 text-xs bg-white text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        >
+                          {geoEngine.getRegionalNodes().map(node => (
+                            <option key={node.id} value={node.id}>
+                              {node.code}: {node.name} (Subtree anchor: {node.wholesalerName || node.name})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="text-[11px] text-purple-900 font-mono bg-white/80 p-2 rounded border border-purple-200">
+                        <div className="text-[10px] text-purple-600 font-bold uppercase mb-0.5">Topological Hierarchy Path:</div>
+                        {geoEngine.getNodePath(formPrimaryNodeId)} ➔ All child 20km local nodes
+                      </div>
+                    </div>
+                  )}
+
+                  {formNodeLevel === 'LOCAL_NODE' && (
+                    <div className="p-3 bg-emerald-50/50 rounded border border-emerald-200 space-y-3 text-xs">
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                          <label className="font-semibold text-emerald-950">
+                            Authorized 20 km Local Supply Nodes (Corridors):
+                          </label>
+                          <div className="flex items-center space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const allLocalIds = SUPPLY_NODES.filter(n => n.level === 'LOCAL_NODE').map(n => n.id);
+                                setFormAssignedNodeIds(allLocalIds);
+                              }}
+                              className="text-[10px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded border border-emerald-300"
+                            >
+                              ✓ All Local Nodes (Nationwide Local Commodity)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormAssignedNodeIds([formPrimaryNodeId]);
+                              }}
+                              className="text-[10px] text-slate-600 bg-white hover:bg-slate-100 px-2 py-0.5 rounded border border-slate-200"
+                            >
+                              Single Node Only
+                            </button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {SUPPLY_NODES.filter(n => n.level === 'LOCAL_NODE').map(node => {
+                            const isChecked = formAssignedNodeIds.includes(node.id);
+                            return (
+                              <label
+                                key={node.id}
+                                className={`flex items-start space-x-2 p-2 rounded border text-xs cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? 'bg-emerald-100/70 border-emerald-400 text-emerald-950 font-semibold'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      const updated = [...formAssignedNodeIds, node.id];
+                                      setFormAssignedNodeIds(updated);
+                                      if (!formAssignedNodeIds.includes(formPrimaryNodeId)) {
+                                        setFormPrimaryNodeId(node.id);
+                                      }
+                                    } else {
+                                      const remaining = formAssignedNodeIds.filter(id => id !== node.id);
+                                      setFormAssignedNodeIds(remaining.length > 0 ? remaining : [node.id]);
+                                      if (formPrimaryNodeId === node.id && remaining.length > 0) {
+                                        setFormPrimaryNodeId(remaining[0]);
+                                      }
+                                    }
+                                  }}
+                                  className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                                />
+                                <div>
+                                  <div className="flex items-center space-x-1">
+                                    <span className="font-bold">{node.code}</span>
+                                    <span>•</span>
+                                    <span>{node.name.split(' ')[0]}</span>
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-normal">
+                                    Anchor: {node.wholesalerName || node.name} ({node.radiusKm}km geofence)
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Primary Node & Radius */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-emerald-200/80">
+                        <div>
+                          <label className="block font-semibold text-emerald-950 mb-1">
+                            Primary Anchor Supply Node:
+                          </label>
+                          <select
+                            value={formPrimaryNodeId}
+                            onChange={(e) => setFormPrimaryNodeId(e.target.value)}
+                            className="w-full border border-emerald-300 rounded px-2.5 py-1.5 text-xs bg-white text-slate-900 font-medium focus:outline-none"
+                          >
+                            {SUPPLY_NODES.filter(n => n.level === 'LOCAL_NODE').map(node => (
+                              <option key={node.id} value={node.id}>
+                                {node.code}: {node.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block font-semibold text-emerald-950 mb-1">
+                            Max Geofence Radius from Node
+                          </label>
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="number"
+                              min={1}
+                              max={50}
+                              value={formMaxRadiusKm}
+                              onChange={(e) => setFormMaxRadiusKm(Number(e.target.value))}
+                              className="w-20 border border-emerald-300 rounded px-2 py-1 text-xs bg-white font-mono text-slate-900"
+                            />
+                            <span className="text-xs text-slate-500">km</span>
+                            <div className="flex items-center space-x-1">
+                              {[10, 15, 20].map(r => (
+                                <button
+                                  key={r}
+                                  type="button"
+                                  onClick={() => setFormMaxRadiusKm(r)}
+                                  className={`text-[10px] px-2 py-0.5 rounded border ${
+                                    formMaxRadiusKm === r
+                                      ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                                      : 'bg-white text-emerald-900 border-emerald-200 hover:bg-emerald-50'
+                                  }`}
+                                >
+                                  {r}km
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tree Breadcrumb */}
+                      <div className="text-[11px] text-emerald-950 font-mono bg-white/80 p-2 rounded border border-emerald-200">
+                        <div className="text-[10px] text-emerald-700 font-bold uppercase mb-0.5">Topological Hierarchy Path:</div>
+                        {geoEngine.getNodePath(formPrimaryNodeId)}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Geospace Engine Optimization Note */}
+                  <div className="bg-indigo-50/60 border border-indigo-200/80 rounded p-2 text-[11px] text-indigo-950 flex items-start space-x-2">
+                    <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Hierarchical Node Pruning:</span> Retailer dukas only see products if their registered geofenced node matches or descends from this product's assigned supply node tier.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Description & Search Aliases */}
               <div className="space-y-3 pt-2">
                 <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5 border-b border-slate-100 pb-1">
-                  <span>4. Description & Swahili / Sheng Search Aliases</span>
+                  <span>5. Description & Swahili / Sheng Search Aliases</span>
                 </h4>
 
                 <div>
@@ -943,6 +1389,78 @@ export const ProductsMasterCatalog: React.FC = () => {
                       {selectedProduct.status}
                     </span>
                   </div>
+                </div>
+              </div>
+
+              {/* Supply Node Tree Placement & Geofence Hierarchy */}
+              <div className="bg-slate-50 rounded border border-slate-200 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-1.5">
+                  <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
+                    <Network className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Supply Node Tree Placement & Geofence Architecture</span>
+                  </span>
+                  <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-800">
+                    {selectedProduct.supplyNodeLevel || selectedProduct.searchScope || 'ROOT'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Tree Classification Tier</span>
+                    <div className="mt-1">
+                      {(selectedProduct.supplyNodeLevel === 'ROOT' || (!selectedProduct.supplyNodeLevel && selectedProduct.searchScope !== 'LOCAL')) ? (
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-blue-100 text-blue-900 border border-blue-200">
+                          <Globe className="w-3 h-3 text-blue-700" />
+                          <span>Level 0: ROOT (National Grid)</span>
+                        </span>
+                      ) : selectedProduct.supplyNodeLevel === 'REGION' ? (
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-purple-100 text-purple-900 border border-purple-200">
+                          <Layers className="w-3 h-3 text-purple-700" />
+                          <span>Level 1: REGION (Corridor)</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-emerald-100 text-emerald-900 border border-emerald-200">
+                          <MapPin className="w-3 h-3 text-emerald-700" />
+                          <span>Level 2: LOCAL_NODE (20km)</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Primary Anchor Node</span>
+                    <span className="font-semibold text-slate-800 block text-xs mt-1 font-mono">
+                      {selectedProduct.primarySupplyNodeId ? (
+                        <>
+                          <span className="font-bold text-slate-900">{geoEngine.getNodeById(selectedProduct.primarySupplyNodeId)?.code || 'NODE'}</span>: {geoEngine.getNodeById(selectedProduct.primarySupplyNodeId)?.name}
+                        </>
+                      ) : (
+                        'ROOT-KE-01: Kenya National FMCG Grid'
+                      )}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Geofence Corridor Constraint</span>
+                    <span className="font-mono font-semibold text-slate-800 block text-xs mt-1">
+                      {selectedProduct.maxSearchRadiusKm ? `≤ ${selectedProduct.maxSearchRadiusKm} km Radius` : 'Universal / Regional Boundary'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Topological Hierarchy Breadcrumb */}
+                <div className="bg-white p-2 rounded border border-slate-200 text-[11px] font-mono text-slate-800 space-y-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    Full Hierarchy Path:
+                  </span>
+                  <div className="flex items-center space-x-1 text-indigo-900 font-semibold flex-wrap">
+                    {geoEngine.getNodePath(selectedProduct.primarySupplyNodeId || 'root_kenya')}
+                  </div>
+                  {selectedProduct.assignedSupplyNodeIds && selectedProduct.assignedSupplyNodeIds.length > 1 && (
+                    <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-100">
+                      Authorized Multi-Nodes: {selectedProduct.assignedSupplyNodeIds.map(id => geoEngine.getNodeById(id)?.code || id).join(', ')}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -156,7 +156,7 @@ export function calculateOrderPayload(
 
   for (const item of items) {
     const prod = catalog.find((p) => p.id === item.productId);
-    const unitWeight = prod?.unitWeightKg || 5.0; // default 5kg
+    const unitWeight = item.unitWeightKg !== undefined ? item.unitWeightKg : (prod?.unitWeightKg || 5.0);
     const unitVolume = prod?.unitVolumeCbm || 0.015; // default 0.015 cbm
     totalWeightKg += unitWeight * item.quantity;
     totalVolumeCbm += unitVolume * item.quantity;

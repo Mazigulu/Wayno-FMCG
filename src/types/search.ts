@@ -1,4 +1,4 @@
-import { Product, SupplierProduct, SearchResultItem, RetailerShop } from './wayno';
+import { Product, SupplierProduct, SearchResultItem, RetailerShop, SupplyNode, SupplyNodeLevel, ProductSearchScope } from './wayno';
 
 export type QueryIntent = 
   | 'SPECIFIC_SKU'       // e.g. "Jogoo 2kg bale"
@@ -66,6 +66,13 @@ export interface EnhancedSearchResultItem extends SearchResultItem {
   conquestRivalBrand?: string;
   targetedBadgeText?: string;
   appliedCampaignId?: string;
+  searchScope?: ProductSearchScope;
+  targetServiceZones?: string[];
+  supplyNodeLevel?: SupplyNodeLevel;
+  primarySupplyNodeId?: string;
+  assignedSupplyNode?: SupplyNode;
+  shopSupplyNode?: SupplyNode;
+  treeClassificationPath?: string;
   deliveryZone?: {
     zoneTier: 'LOCAL_CORRIDOR' | 'SUBCOUNTY_EXPRESS' | 'EXTENDED_DISPATCH' | 'OUT_OF_CORRIDOR';
     zoneName: string;
@@ -127,6 +134,9 @@ export interface SearchFilters {
   maxDistanceKm?: number;
   promotionsOnly?: boolean;
   wholesalerLocationId?: string;
+  searchScope?: 'ALL' | 'NATIONAL' | 'LOCAL';
+  supplyNodeLevel?: 'ALL' | 'ROOT' | 'REGION' | 'LOCAL_NODE';
+  supplyNodeId?: string;
 }
 
 export interface FacetCount {
@@ -152,6 +162,13 @@ export interface InvertedIndexMetrics {
   avgDocLength: number;
   postingsEvaluated: number;
   indexLookupTimeMs: number;
+  // Sub-10ms Optimization Metrics
+  treePrunedCount?: number;
+  candidatePoolSize?: number;
+  activeSupplyNodeId?: string;
+  aabbGeoEvaluated?: number;
+  exactHaversineCalculated?: number;
+  snapshotCacheHit?: boolean;
 }
 
 export interface SearchExecutionResultEnhanced {

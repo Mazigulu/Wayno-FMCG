@@ -26,7 +26,8 @@ import {
   Building2,
   Package,
   Truck,
-  AlertOctagon
+  AlertOctagon,
+  LineChart as LineChartIcon
 } from 'lucide-react';
 import { Order, TelemetryEvent, OrderState, Rider, PaymentRecord, Payment, PaymentTransaction } from '../types/wayno';
 import { paymentService } from '../services/paymentService';
@@ -38,6 +39,7 @@ import { ProductsMasterCatalog } from './operations/ProductsMasterCatalog';
 import { DeliveriesDispatchRadar } from './operations/DeliveriesDispatchRadar';
 import { IssuesIncidentDesk } from './operations/IssuesIncidentDesk';
 import { SearchAnalyticsDesk } from './operations/SearchAnalyticsDesk';
+import { ReconciliationDashboard } from './operations/ReconciliationDashboard';
 
 export type OperationsPage = 
   | 'orders' 
@@ -90,8 +92,8 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
   const [overrideNote, setOverrideNote] = useState('');
   const [orderStateFilter, setOrderStateFilter] = useState<string>('ALL');
 
-  // Section 26: Two-Tier Payment Ledger State
-  const [ledgerViewTab, setLedgerViewTab] = useState<'transactions' | 'payments'>('transactions');
+  // Section 26: Two-Tier Payment Ledger State & Reconciliation Dashboard
+  const [ledgerViewTab, setLedgerViewTab] = useState<'reconciliation' | 'transactions' | 'payments'>('reconciliation');
   const [ledgerStatusFilter, setLedgerStatusFilter] = useState<string>('ALL');
   const [ledgerSearchQuery, setLedgerSearchQuery] = useState<string>('');
   const [selectedTxnForAudit, setSelectedTxnForAudit] = useState<PaymentTransaction | null>(null);
@@ -1012,12 +1014,30 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
             <div className="bg-white border border-slate-200 rounded-md p-4 space-y-3.5 shadow-2xs">
               {/* Top View Selector & Search Controls */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                {/* Two-tier toggle tabs */}
-                <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-md">
+                {/* Three-tier toggle tabs */}
+                <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-md overflow-x-auto">
+                  <button
+                    id="ledger-tab-reconciliation"
+                    onClick={() => setLedgerViewTab('reconciliation')}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      ledgerViewTab === 'reconciliation'
+                        ? 'bg-white text-slate-900 font-bold shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <LineChartIcon className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Reconciliation Dashboard</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                      ledgerViewTab === 'reconciliation' ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-800'
+                    }`}>
+                      Recharts
+                    </span>
+                  </button>
+
                   <button
                     id="ledger-tab-transactions"
                     onClick={() => setLedgerViewTab('transactions')}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                       ledgerViewTab === 'transactions'
                         ? 'bg-white text-slate-900 font-bold shadow-2xs'
                         : 'text-slate-600 hover:text-slate-900'
@@ -1035,7 +1055,7 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
                   <button
                     id="ledger-tab-payments"
                     onClick={() => setLedgerViewTab('payments')}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer ${
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                       ledgerViewTab === 'payments'
                         ? 'bg-white text-slate-900 font-bold shadow-2xs'
                         : 'text-slate-600 hover:text-slate-900'
@@ -1074,31 +1094,44 @@ export const OperationsConsole: React.FC<OperationsConsoleProps> = ({
                 </div>
               </div>
 
-              {/* Status Filter Chips */}
-              <div className="flex items-center space-x-1.5 overflow-x-auto text-xs pb-1">
-                <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1 flex items-center space-x-1">
-                  <Filter className="w-3 h-3 text-slate-400" />
-                  <span>Filter:</span>
-                </span>
-                {(['ALL', 'SUCCESS', 'REVERSED', 'FAILED', 'INITIATED'] as const).map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setLedgerStatusFilter(st)}
-                    className={`px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-[11px] ${
-                      ledgerStatusFilter === st
-                        ? 'bg-slate-900 text-white font-semibold'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
-                  >
-                    {st === 'ALL' ? 'All Records' : st}
-                    {st === 'FAILED' && totalFailedAttempts > 0 && (
-                      <span className="ml-1 text-[9px] bg-rose-500 text-white px-1 py-0.2 rounded-full font-bold">
-                        {totalFailedAttempts}
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
+              {/* Status Filter Chips (For raw ledger table views) */}
+              {ledgerViewTab !== 'reconciliation' && (
+                <div className="flex items-center space-x-1.5 overflow-x-auto text-xs pb-1">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1 flex items-center space-x-1">
+                    <Filter className="w-3 h-3 text-slate-400" />
+                    <span>Filter:</span>
+                  </span>
+                  {(['ALL', 'SUCCESS', 'REVERSED', 'FAILED', 'INITIATED'] as const).map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => setLedgerStatusFilter(st)}
+                      className={`px-2.5 py-1 rounded-full font-medium transition-colors cursor-pointer text-[11px] ${
+                        ledgerStatusFilter === st
+                          ? 'bg-slate-900 text-white font-semibold'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {st === 'ALL' ? 'All Records' : st}
+                      {st === 'FAILED' && totalFailedAttempts > 0 && (
+                        <span className="ml-1 text-[9px] bg-rose-500 text-white px-1 py-0.2 rounded-full font-bold">
+                          {totalFailedAttempts}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* VIEW 1: RECONCILIATION DASHBOARD (Visual Analytics with Recharts) */}
+              {ledgerViewTab === 'reconciliation' && (
+                <ReconciliationDashboard
+                  orders={orders}
+                  payments={paymentsList}
+                  paymentTransactions={transactionsList}
+                  onInitiateRefund={onInitiateRefund}
+                  onNavigateToRawLedger={() => setLedgerViewTab('transactions')}
+                />
+              )}
 
               {/* TABLE VIEW: payment_transactions (Child Audit Ledger) */}
               {ledgerViewTab === 'transactions' && (

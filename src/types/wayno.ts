@@ -70,6 +70,8 @@ export interface WholesalerLocation {
   avgPrepTimeMinutes: number;
 }
 
+export type ProductSearchScope = 'NATIONAL' | 'LOCAL' | 'ROOT' | 'REGION' | 'LOCAL_NODE';
+
 export interface Product {
   id: string; // product_id (e.g. 'prod_njugu')
   product_id?: string; // canonical schema attribute
@@ -94,6 +96,13 @@ export interface Product {
   minimumOrderQuantity?: number; // Admin minimum order quantity (Section 13)
   unitWeightKg?: number; // Weight in KG per wholesale unit (e.g. 24kg for bale of flour)
   unitVolumeCbm?: number; // Volume in cubic meters per wholesale unit (e.g. 0.04 cbm)
+  // Supply Node Tree Classification (Root -> Region -> 20 km Local Nodes)
+  supplyNodeLevel?: SupplyNodeLevel; // 'ROOT' (National Grid) | 'REGION' (Regional Corridor) | 'LOCAL_NODE' (20 km Local Territory)
+  primarySupplyNodeId?: string; // Anchor supply node ID in tree (e.g. 'root_kenya', 'region_nairobi_metro', 'node_eastleigh_20km')
+  assignedSupplyNodeIds?: string[]; // Array of node IDs in the supply tree authorized to stock/distribute this SKU
+  searchScope?: ProductSearchScope; // Extent / scope alias
+  targetServiceZones?: string[]; // Legacy zone corridor IDs
+  maxSearchRadiusKm?: number; // Maximum geographical radius in km for local searchability (e.g. 15km - 20km)
 }
 
 export interface SupplierProduct {
@@ -162,6 +171,8 @@ export interface OrderItem {
   totalPrice: number;
   wholesalerLocationId: string;
   wholesalerName: string;
+  unitWeightKg?: number;
+  unitVolumeCbm?: number;
   isSubstituted?: boolean;
   originalProductId?: string;
   originalProductName?: string;

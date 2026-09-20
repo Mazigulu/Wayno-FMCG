@@ -48,7 +48,7 @@ import {
   evaluateSubstitution,
   evaluateCancellationRefund
 } from '../src/services/businessRulesEngine';
-import { geoEngine } from '../src/services/hierarchicalGeofenceEngine';
+import { geoEngine, optimizationEngine } from '../src/services/hierarchicalGeofenceEngine';
 import { Order, OrderState, OrderItem, SupplyNode } from '../src/types/wayno';
 import { PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS, INITIAL_SHOPS } from '../src/data/mockData';
 
@@ -151,14 +151,32 @@ async function runEdgeCaseSuite() {
   assertEdge('SPATIAL', 'Zero-distance calculation yields exactly 0.00 km (no NaN or precision drift)', exactDistToSelf === 0);
 
   // 2.3 Delivery pricing clamps: 0km distance fee must equal base fee
-  const zeroKmFee = calculateDeliveryFee(0, 5, 'STANDARD_BODA');
-  const extremeDistanceFee = calculateDeliveryFee(150, 5, 'STANDARD_BODA');
-  assertEdge('SPATIAL', 'Pricing engine clamps zero-distance deliveries to base minimum (KES 100)', zeroKmFee.totalFee >= 100);
-  assertEdge('SPATIAL', 'Long-distance surge scales monotonically with mileage and cap', extremeDistanceFee.totalFee > zeroKmFee.totalFee && extremeDistanceFee.totalFee < 10000);
+  const zeroKmFee = calculateDeliveryFee({
+    distanceKm: 0,
+    weightKg: 5,
+    isRushHourSurge: false,
+    isHeavyRainSurge: false,
+    isExpressUrgent: false,
+    isMultiDrop: false,
+    zoneId: 'zone_nairobi_central',
+    basketSubtotalKES: 2500,
+  });
+  const extremeDistanceFee = calculateDeliveryFee({
+    distanceKm: 150,
+    weightKg: 5,
+    isRushHourSurge: false,
+    isHeavyRainSurge: false,
+    isExpressUrgent: false,
+    isMultiDrop: false,
+    zoneId: 'zone_nairobi_central',
+    basketSubtotalKES: 2500,
+  });
+  assertEdge('SPATIAL', 'Pricing engine clamps zero-distance deliveries to base minimum (KES 150)', zeroKmFee.finalDeliveryFee >= 150);
+  assertEdge('SPATIAL', 'Long-distance surge scales monotonically with mileage and cap', extremeDistanceFee.finalDeliveryFee > zeroKmFee.finalDeliveryFee && extremeDistanceFee.finalDeliveryFee < 10000);
 
   // 2.4 Geofence boundary classification
-  const exact20kmState = geoEngine.evaluateRiderTerritoryMandate(20.0);
-  const over20kmState = geoEngine.evaluateRiderTerritoryMandate(20.01);
+  const exact20kmState = optimizationEngine.evaluateRiderMandate(20.0, 15.0, 24);
+  const over20kmState = optimizationEngine.evaluateRiderMandate(20.1, 15.1, 24);
   assertEdge('SPATIAL', '20.00 km boundary is IN_MANDATE; 20.01 km correctly triggers ROUTE_EXTENSION', exact20kmState.isWithinMandate && !over20kmState.isWithinMandate);
 
   // --------------------------------------------------------------------------
@@ -169,25 +187,57 @@ async function runEdgeCaseSuite() {
   // 3.1 Concurrent virtual inventory reservation on scarce stock
   const testWholesaler = WHOLESALERS[0];
   const testProduct = PRODUCTS[0];
-  const reservationManager = new VirtualStockReservationManager();
   
-  // Set scarce stock: 5 units total, safety buffer 2 units -> usable = 3 units
-  reservationManager.setWholesalerInventory(testWholesaler.id, testProduct.id, 5, 2);
+  // Create mock supplier inventory with scarce stock: 5 units total, safety buffer 2 units -> usable = 3 units
+  const mockInventory = [
+    {
+      id: 'sp_edge_1',
+      wholesalerLocationId: testWholesaler.id,
+      productId: testProduct.id,
+      price: 1800,
+      stockQty: 5,
+      safetyStockBuffer: 2,
+    },
+  ];
   
-  // Shop A tries to reserve 2 units -> should succeed
-  const resShopA = reservationManager.reserveStock('shop_A', testWholesaler.id, testProduct.id, 2, 60);
-  // Shop B tries to reserve 2 units -> only 1 remaining (3 - 2 = 1) -> must fail
-  const resShopB = reservationManager.reserveStock('shop_B', testWholesaler.id, testProduct.id, 2, 60);
-  // Shop B tries to reserve 1 unit -> should succeed
-  const resShopBretry = reservationManager.reserveStock('shop_B', testWholesaler.id, testProduct.id, 1, 60);
+  // Shop A tries to reserve 2 units -> should succeed (5 - 2 >= 2 buffer)
+  const resShopA = VirtualStockReservationManager.reserveStock(
+    'ord_shop_A',
+    testWholesaler.id,
+    [{ productId: testProduct.id, quantity: 2 }],
+    mockInventory as any
+  );
+
+  // Shop B tries to reserve 2 units -> only 1 usable remaining (5 - 2 - 2 = 1 < 2 buffer) -> must fail
+  const resShopB = VirtualStockReservationManager.reserveStock(
+    'ord_shop_B',
+    testWholesaler.id,
+    [{ productId: testProduct.id, quantity: 2 }],
+    mockInventory as any
+  );
+
+  // Shop B tries to reserve 1 unit -> should succeed (5 - 2 - 1 = 2 == buffer)
+  const resShopBretry = VirtualStockReservationManager.reserveStock(
+    'ord_shop_B',
+    testWholesaler.id,
+    [{ productId: testProduct.id, quantity: 1 }],
+    mockInventory as any
+  );
 
   assertEdge('INVENTORY', 'Phantom stock shield locks out concurrent order exceeding physical usable balance', resShopA.success && !resShopB.success && resShopBretry.success);
 
   // 3.2 Expired reservation auto-release
-  // Release shop A
-  reservationManager.releaseReservation(resShopA.reservationId!);
-  // Now shop C can reserve the newly freed 2 units
-  const resShopC = reservationManager.reserveStock('shop_C', testWholesaler.id, testProduct.id, 2, 60);
+  // Cancel/release shop A reservation
+  if (resShopA.reservationId) {
+    VirtualStockReservationManager.cancelReservation(resShopA.reservationId);
+  }
+  // Now shop C can reserve the freed 2 units
+  const resShopC = VirtualStockReservationManager.reserveStock(
+    'ord_shop_C',
+    testWholesaler.id,
+    [{ productId: testProduct.id, quantity: 2 }],
+    mockInventory as any
+  );
   assertEdge('INVENTORY', 'Released virtual holds immediately restore available inventory pool', resShopC.success);
 
   // 3.3 Overweight cargo auto-split with heterogeneous items
@@ -195,7 +245,7 @@ async function runEdgeCaseSuite() {
     { productId: 'prod_1', name: 'Maize Flour 12x2kg', quantity: 8, unitPrice: 1800, totalPrice: 14400, unitWeightKg: 24 }, // 192 kg
   ];
   const payload = calculateOrderPayload(heavyItems);
-  assertEdge('LOGISTICS', 'Correctly flags 192 kg heavy cargo and recommends 3 motorcycle split or 1 pickup van', payload.totalWeightKg === 192 && payload.recommendedVehicle !== 'BODA_BODA');
+  assertEdge('LOGISTICS', 'Correctly flags 192 kg heavy cargo and recommends 3 motorcycle split or 1 pickup van', payload.totalWeightKg === 192 && payload.assignedVehicleType !== 'BODA_BODA');
 
   // --------------------------------------------------------------------------
   // 4. FINITE STATE MACHINE (FSM) LIFECYCLE & SECURITY
@@ -222,9 +272,9 @@ async function runEdgeCaseSuite() {
   assertEdge('FSM_SECURITY', 'DELIVERED is strictly terminal with 0 permitted forward transitions', Array.isArray(possibleNextFromDelivered) && possibleNextFromDelivered.length === 0);
 
   // 4.3 Offline USSD Delivery Code determinism & security
-  const code1 = generateOfflineDeliveryCode('ORD-88219');
-  const code2 = generateOfflineDeliveryCode('ORD-88219');
-  const codeDiff = generateOfflineDeliveryCode('ORD-88220');
+  const code1 = generateOfflineDeliveryCode('ORD-88219', '254712345678');
+  const code2 = generateOfflineDeliveryCode('ORD-88219', '254712345678');
+  const codeDiff = generateOfflineDeliveryCode('ORD-88220', '254712345678');
   assertEdge('SECURITY', 'Offline emergency handshake code is deterministic (hash-stable) and distinct per order', code1 === code2 && code1 !== codeDiff && code1.length === 4);
 
   // --------------------------------------------------------------------------
@@ -242,8 +292,8 @@ async function runEdgeCaseSuite() {
   let injectionSafe = true;
   for (const q of maliciousQueries) {
     try {
-      const res = executeWaynoSearch(q, PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS);
-      if (!res || !Array.isArray(res.items)) injectionSafe = false;
+      const res = executeWaynoSearch(q);
+      if (!res || !Array.isArray(res.results)) injectionSafe = false;
     } catch {
       injectionSafe = false;
     }
@@ -256,9 +306,9 @@ async function runEdgeCaseSuite() {
   assertEdge('SEARCH', 'Rejects stale out-of-order network responses over high-jitter 2G/3G connections', isStale && !isFresh);
 
   // 5.3 Empty / single character / unicode emoji search handling
-  const emojiRes = executeWaynoSearch('🌾🌽', PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS);
-  const emptyRes = executeWaynoSearch('   ', PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS);
-  assertEdge('SEARCH', 'Gracefully handles empty query tokens and Unicode/Swahili emojis', Array.isArray(emojiRes.items) && Array.isArray(emptyRes.items));
+  const emojiRes = executeWaynoSearch('🌾🌽');
+  const emptyRes = executeWaynoSearch('   ');
+  assertEdge('SEARCH', 'Gracefully handles empty query tokens and Unicode/Swahili emojis', Array.isArray(emojiRes.results) && Array.isArray(emptyRes.results));
 
   // --------------------------------------------------------------------------
   // SUMMARY

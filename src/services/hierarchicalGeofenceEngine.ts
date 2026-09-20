@@ -20,6 +20,7 @@
 import {
   SupplyNode,
   SupplyNodeLevel,
+  Product,
   HierarchicalEscalationStep,
   HierarchicalProcurementResolution,
   VehicleRoutingStop,
@@ -235,6 +236,171 @@ export const geoEngine = {
     }
 
     return hierarchy;
+  },
+
+  getRegionalNodes(): SupplyNode[] {
+    return SUPPLY_NODES.filter((n) => n.level === 'REGION');
+  },
+
+  getRootNode(): SupplyNode {
+    return SUPPLY_NODES.find((n) => n.level === 'ROOT') || SUPPLY_NODES[0];
+  },
+
+  /**
+   * Returns display tree path string (e.g. ROOT-KE-01 > REG-NBI-01 > NODE-NBI-01)
+   */
+  getNodePath(nodeId: string): string {
+    const ancestors = this.getAncestorHierarchy(nodeId);
+    return [...ancestors].reverse().map(n => `${n.code} (${n.name.split(' ')[0]})`).join(' ➔ ');
+  },
+
+  /**
+   * Checks whether a child node is a descendant of a specific target node in the tree.
+   */
+  isNodeDescendantOf(childNodeId: string, targetAncestorId: string): boolean {
+    if (childNodeId === targetAncestorId) return true;
+    const ancestors = this.getAncestorHierarchy(childNodeId);
+    return ancestors.some(a => a.id === targetAncestorId);
+  },
+
+  /**
+   * Evaluates whether a retailer shop can search, view, and order a product based on its Supply Node Tree classification.
+   * - Level 0: ROOT (National Grid) -> Accessible by all shops across Kenya
+   * - Level 1: REGION (Regional Supply Corridor) -> Accessible by shops whose local node is in that regional branch
+   * - Level 2: LOCAL_NODE (20 km Local Territory) -> Confined to specific 20km local node(s)
+   */
+  evaluateShopNodeEligibility(
+    shopCoordinates: { lat: number; lng: number },
+    product: Product
+  ): {
+    isEligible: boolean;
+    shopNode: SupplyNode;
+    productNodeLevel: SupplyNodeLevel;
+    assignedNodes: SupplyNode[];
+    reason: string;
+  } {
+    const shopNode = this.findLocalNodeForShop(shopCoordinates);
+    
+    // Resolve product classification level (defaults to ROOT if unspecified)
+    let level: SupplyNodeLevel = product.supplyNodeLevel || 'ROOT';
+    if (!product.supplyNodeLevel && product.searchScope) {
+      if (product.searchScope === 'LOCAL' || product.searchScope === 'LOCAL_NODE') {
+        level = 'LOCAL_NODE';
+      } else if (product.searchScope === 'REGION') {
+        level = 'REGION';
+      } else {
+        level = 'ROOT';
+      }
+    }
+
+    // Resolve assigned supply nodes
+    let assignedNodeIds = product.assignedSupplyNodeIds ? [...product.assignedSupplyNodeIds] : [];
+    if (assignedNodeIds.length === 0 && product.primarySupplyNodeId) {
+      assignedNodeIds = [product.primarySupplyNodeId];
+    }
+    // Backward compatibility with targetServiceZones
+    if (assignedNodeIds.length === 0 && product.targetServiceZones && product.targetServiceZones.length > 0) {
+      assignedNodeIds = product.targetServiceZones.map(z => {
+        if (z.includes('east')) return 'node_eastleigh_20km';
+        if (z.includes('central') || z.includes('industrial')) return 'node_industrial_area_20km';
+        if (z.includes('west')) return 'node_nairobi_west_20km';
+        return 'node_eastleigh_20km';
+      });
+    }
+
+    if (level === 'ROOT') {
+      const rootNode = this.getRootNode();
+      return {
+        isEligible: true,
+        shopNode,
+        productNodeLevel: 'ROOT',
+        assignedNodes: [rootNode],
+        reason: 'National Grid Catalog: Root tier distribution accessible across all regions and nodes.',
+      };
+    }
+
+    const assignedNodes = assignedNodeIds
+      .map(id => this.getNodeById(id))
+      .filter((n): n is SupplyNode => Boolean(n));
+
+    if (level === 'REGION') {
+      // Check if shopNode's ancestor hierarchy includes any of the assigned regional nodes
+      const ancestors = this.getAncestorHierarchy(shopNode.id);
+      const matchedRegion = ancestors.find(a => 
+        assignedNodeIds.includes(a.id) || (assignedNodeIds.length === 0 && a.level === 'REGION')
+      );
+
+      if (matchedRegion) {
+        return {
+          isEligible: true,
+          shopNode,
+          productNodeLevel: 'REGION',
+          assignedNodes: assignedNodes.length > 0 ? assignedNodes : [matchedRegion],
+          reason: `Shop is situated within ${matchedRegion.name} (${matchedRegion.code}) regional corridor branch.`,
+        };
+      }
+
+      return {
+        isEligible: false,
+        shopNode,
+        productNodeLevel: 'REGION',
+        assignedNodes,
+        reason: `Shop is outside authorized Regional Corridor (${assignedNodes.map(n => n.name).join(', ') || 'Restricted Region'}).`,
+      };
+    }
+
+    // LOCAL_NODE level (20 km local territory)
+    const isAllLocalNodes = assignedNodeIds.length === 0 || 
+      assignedNodeIds.includes('all_local_nodes') || 
+      assignedNodeIds.includes('root_kenya') ||
+      assignedNodeIds.length >= this.getLocalNodes().length;
+
+    if (isAllLocalNodes) {
+      return {
+        isEligible: true,
+        shopNode,
+        productNodeLevel: 'LOCAL_NODE',
+        assignedNodes: [shopNode],
+        reason: `Nationwide Local Commodity: Available across any local node where local wholesalers maintain stock within ≤${product.maxSearchRadiusKm || 20} km.`,
+      };
+    }
+
+    const isDirectNodeMatch = assignedNodeIds.includes(shopNode.id);
+    if (isDirectNodeMatch) {
+      return {
+        isEligible: true,
+        shopNode,
+        productNodeLevel: 'LOCAL_NODE',
+        assignedNodes,
+        reason: `Shop is located directly inside ${shopNode.name} 20 km territory.`,
+      };
+    }
+
+    // Check if within allowed radius of any assigned local node center
+    if (assignedNodes.length > 0) {
+      const allowedRadius = product.maxSearchRadiusKm || 20;
+      const isWithinRadius = assignedNodes.some(node => {
+        const dist = this.calculateStraightLineRadiusKm(shopCoordinates, node.centerPoint);
+        return dist <= allowedRadius;
+      });
+      if (isWithinRadius) {
+        return {
+          isEligible: true,
+          shopNode,
+          productNodeLevel: 'LOCAL_NODE',
+          assignedNodes,
+          reason: `Shop is within ${allowedRadius}km radius of local supply node territory.`,
+        };
+      }
+    }
+
+    return {
+      isEligible: false,
+      shopNode,
+      productNodeLevel: 'LOCAL_NODE',
+      assignedNodes,
+      reason: `Shop is outside authorized 20 km local territory (${assignedNodes.map(n => n.name).join(', ') || 'Restricted Local Node'}).`,
+    };
   },
 };
 

@@ -195,6 +195,12 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1525253086316-d0c936c81488?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 1200,
+    supplyNodeLevel: 'LOCAL_NODE',
+    primarySupplyNodeId: 'node_eastleigh_20km',
+    assignedSupplyNodeIds: ['node_eastleigh_20km', 'node_industrial_area_20km'],
+    maxSearchRadiusKm: 20,
+    searchScope: 'LOCAL_NODE',
+    targetServiceZones: ['zone_nairobi_east', 'zone_nairobi_central'],
   },
   {
     id: 'prod_blueband',
@@ -215,6 +221,10 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 2850,
+    supplyNodeLevel: 'ROOT',
+    primarySupplyNodeId: 'root_kenya',
+    assignedSupplyNodeIds: ['root_kenya'],
+    searchScope: 'ROOT',
   },
   {
     id: 'prod_jogoo',
@@ -235,6 +245,10 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 1980,
+    supplyNodeLevel: 'ROOT',
+    primarySupplyNodeId: 'root_kenya',
+    assignedSupplyNodeIds: ['root_kenya'],
+    searchScope: 'ROOT',
   },
   {
     id: 'prod_freshfri',
@@ -255,6 +269,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 3400,
+    searchScope: 'NATIONAL',
   },
   {
     id: 'prod_omo',
@@ -275,6 +290,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 2200,
+    searchScope: 'NATIONAL',
   },
   {
     id: 'prod_geisha',
@@ -295,6 +311,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1607006314175-9e6b499cb9e2?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 2450,
+    searchScope: 'NATIONAL',
   },
   {
     id: 'prod_menengai',
@@ -315,6 +332,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 1650,
+    searchScope: 'NATIONAL',
   },
   {
     id: 'prod_pembe',
@@ -335,6 +353,7 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 2150,
+    searchScope: 'NATIONAL',
   },
   {
     id: 'prod_ketepa',
@@ -355,6 +374,10 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 2700,
+    supplyNodeLevel: 'REGION',
+    primarySupplyNodeId: 'region_nairobi_metro',
+    assignedSupplyNodeIds: ['region_nairobi_metro'],
+    searchScope: 'REGION',
   },
   {
     id: 'prod_soko',
@@ -375,6 +398,36 @@ export const PRODUCTS: Product[] = [
     image: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=500&auto=format&fit=crop&q=80',
     status: 'ACTIVE',
     recommendedRetailPrice: 1850,
+    supplyNodeLevel: 'ROOT',
+    primarySupplyNodeId: 'root_kenya',
+    assignedSupplyNodeIds: ['root_kenya'],
+    searchScope: 'ROOT',
+  },
+  {
+    id: 'prod_broadways',
+    product_id: 'prod_broadways',
+    name: 'Broadways Premium Sliced White Bread 400g (Crate of 20 Loaves)',
+    brand: 'Broadways',
+    manufacturer: 'Broadway Bakery Ltd',
+    description: 'Daily fresh oven-baked sliced bread. Perishable FMCG with localized same-day corridor delivery.',
+    packSize: '400g x 20 Loaves Crate',
+    pack_size: '400g x 20 Loaves Crate',
+    unit: 'Crate',
+    internalCategory: 'Bakery & Fresh Foods',
+    category_internal: 'Bakery & Fresh Foods',
+    keywords: ['bread', 'mkate', 'broadways', 'toast', 'fresh bread', 'bakery', 'breakfast'],
+    synonyms: ['sliced bread', 'white bread', 'loaf of bread'],
+    aliases: ['mkate', 'bread', 'broadways', 'fresh bread'],
+    barcode: '616554433221',
+    image: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=500&auto=format&fit=crop&q=80',
+    status: 'ACTIVE',
+    recommendedRetailPrice: 1300,
+    supplyNodeLevel: 'LOCAL_NODE',
+    primarySupplyNodeId: 'node_industrial_area_20km',
+    assignedSupplyNodeIds: ['node_industrial_area_20km', 'node_nairobi_west_20km', 'node_eastleigh_20km'],
+    maxSearchRadiusKm: 20,
+    searchScope: 'LOCAL_NODE',
+    targetServiceZones: ['zone_nairobi_central', 'zone_nairobi_west'],
   },
   {
     id: 'prod_rina',
@@ -479,6 +532,29 @@ export const PRODUCTS: Product[] = [
 ];
 
 export const SUPPLIER_PRODUCTS: SupplierProduct[] = [
+  // Broadways Bread (Local supply)
+  {
+    id: 'sp_broadways_01',
+    productId: 'prod_broadways',
+    wholesalerLocationId: 'ws_industrial',
+    wholesalerName: 'Industrial Area Direct Supply Hub',
+    price: 1100,
+    availability: true,
+    stockQty: 50,
+    distanceKm: 5.5,
+    updatedAt: '12 mins ago',
+  },
+  {
+    id: 'sp_broadways_02',
+    productId: 'prod_broadways',
+    wholesalerLocationId: 'ws_westlands',
+    wholesalerName: 'Westlands Fast FMCG Distribution Hub',
+    price: 1120,
+    availability: true,
+    stockQty: 35,
+    distanceKm: 4.8,
+    updatedAt: '18 mins ago',
+  },
   // Njugu
   {
     id: 'sp_01',

@@ -319,21 +319,23 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                     ))}
                   </div>
 
-                  {/* Delivery Location Confirmation */}
-                  <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs space-y-1">
+                  {/* Delivery Location Confirmation & Zero-Touch Sourcing */}
+                  <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs space-y-1.5">
                     <div className="flex items-center justify-between text-slate-500">
                       <span className="font-semibold flex items-center space-x-1 text-slate-700">
                         <MapPin className="w-3.5 h-3.5 text-slate-700" />
                         <span>Delivery Destination</span>
                       </span>
-                      <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono font-medium">
-                        Geo-Fenced
+                      <span className="text-[10px] bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded text-emerald-800 font-mono font-medium flex items-center space-x-1">
+                        <Sparkles className="w-2.5 h-2.5 text-emerald-600" />
+                        <span>Auto-Sourced</span>
                       </span>
                     </div>
                     <p className="text-slate-900 font-medium">{currentShop.address}</p>
-                    <p className="text-slate-500 text-[11px]">
-                      Nearest fulfillment hub: <span className="text-slate-800">{primaryWholesaler}</span>
-                    </p>
+                    <div className="text-slate-500 text-[11px] pt-1 border-t border-slate-200 flex items-center justify-between">
+                      <span>Fulfillment Depot:</span>
+                      <span className="text-slate-800 font-semibold">Auto-Allocated ({primaryWholesaler})</span>
+                    </div>
                   </div>
 
                   {/* Production Resiliency: Cargo Payload & Vehicle Routing */}
