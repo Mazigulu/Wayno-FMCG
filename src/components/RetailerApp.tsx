@@ -934,8 +934,23 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                       <>
                         <span className="text-slate-300">•</span>
                         <span className="text-slate-700 text-[10px] font-mono bg-white px-1.5 py-0.2 rounded border border-slate-200">
-                          BM25 Index: {searchResult.indexMetrics.postingsEvaluated} postings ({searchResult.indexMetrics.indexLookupTimeMs}ms)
+                          BM25: {searchResult.indexMetrics.postingsEvaluated} postings ({searchResult.indexMetrics.indexLookupTimeMs}ms)
                         </span>
+                        {searchResult.indexMetrics.treePrunedCount !== undefined && searchResult.indexMetrics.treePrunedCount > 0 && (
+                          <span className="text-indigo-800 text-[10px] font-mono bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200" title="Topological Bitset Pruning: irrelevant SKUs skipped before BM25">
+                            ⚡ Node Bitset Pruned: {searchResult.indexMetrics.treePrunedCount} SKUs
+                          </span>
+                        )}
+                        {searchResult.indexMetrics.aabbGeoEvaluated !== undefined && searchResult.indexMetrics.aabbGeoEvaluated > 0 && (
+                          <span className="text-teal-800 text-[10px] font-mono bg-teal-50 px-1.5 py-0.2 rounded border border-teal-200" title="AABB Bounding Box fast coordinate filter prior to Haversine">
+                            📐 AABB Geo Filtered: {searchResult.indexMetrics.aabbGeoEvaluated} depot(s)
+                          </span>
+                        )}
+                        {searchResult.indexMetrics.snapshotCacheHit && (
+                          <span className="text-emerald-800 text-[10px] font-mono bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200" title="Instant snapshot retrieved from local supply node cache">
+                            💾 Snapshot Hit
+                          </span>
+                        )}
                       </>
                     )}
                     <span className="text-slate-300">•</span>

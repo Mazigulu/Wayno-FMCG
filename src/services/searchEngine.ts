@@ -32,6 +32,13 @@ import {
   FMCG_SYNONYM_CLUSTERS
 } from './invertedIndex';
 import { geoEngine } from './hierarchicalGeofenceEngine';
+import {
+  supplyNodeBitmapIndex,
+  prefixTrieInstance,
+  calculateAABB,
+  isPointInAABB,
+  localNodeSnapshotCache
+} from './fastSpatialSearchIndex';
 
 // ---------------------------------------------------------------------------
 // 0. ACTIVE PROMOTIONAL PLACEMENTS REGISTRY (FMCG SPONSORED ADS & TRADE PROMOS)
@@ -887,15 +894,48 @@ export function executeWaynoSearch(
 
   const effectiveNormalized = correctedTokens.join(' ');
 
-  // 1.5. Inverted Index Lookup & Evaluation
+  // 1.5. Inverted Index Lookup & Topological Tree Pre-Pruning (Filter First, Score Later)
   const indexLookupStart = performance.now();
   const indexSearchTokens = Array.from(new Set([...rawTokens, ...correctedTokens]));
   const indexSearchResult = invertedIndexInstance.searchCandidates(indexSearchTokens, effectiveNormalized);
   const indexLookupEnd = performance.now();
+
+  // Find the retailer shop's primary local supply node
+  const shopSupplyNode = geoEngine.findLocalNodeForShop({ lat: userLat, lng: userLng });
+  const eligibleProductIds = supplyNodeBitmapIndex.getEligibleProductIdsForNode(shopSupplyNode.id);
+
+  // Client-side snapshot cache verification
+  const snapshotCache = localNodeSnapshotCache.getSnapshot(shopSupplyNode.id);
+  const isSnapshotHit = Boolean(snapshotCache && snapshotCache.cachedProductIds.length > 0);
+  if (!snapshotCache) {
+    // Populate snapshot cache for future instant offline lookups
+    localNodeSnapshotCache.compileSnapshotForNode(shopSupplyNode);
+  }
+
+  // Prune candidate SKUs: only retain products present in this supply node's bitset/Set
+  let treePrunedCount = 0;
+  const candidateProducts: Product[] = [];
+  for (const p of PRODUCTS) {
+    if (eligibleProductIds.has(p.id)) {
+      candidateProducts.push(p);
+    } else {
+      treePrunedCount++;
+    }
+  }
+
+  let aabbEvaluatedCount = 0;
+  let haversineCalculatedCount = 0;
+
   const indexMetrics: InvertedIndexMetrics = {
     ...invertedIndexInstance.getIndexMetrics(),
     postingsEvaluated: indexSearchResult.postingsEvaluated,
     indexLookupTimeMs: Math.round((indexLookupEnd - indexLookupStart) * 100) / 100,
+    treePrunedCount,
+    candidatePoolSize: candidateProducts.length,
+    activeSupplyNodeId: shopSupplyNode.id,
+    aabbGeoEvaluated: 0,
+    exactHaversineCalculated: 0,
+    snapshotCacheHit: isSnapshotHit,
   };
   const indexCandidateMap = new Map<string, typeof indexSearchResult.candidates[0]>();
   indexSearchResult.candidates.forEach((c) => indexCandidateMap.set(c.docId, c));
@@ -969,10 +1009,10 @@ export function executeWaynoSearch(
 
   const expandedTerms = Array.from(expandedTermsSet);
 
-  // 6. Match and Score Candidates
+  // 6. Match and Score Candidates (Iterating over pre-pruned node candidates)
   const matchedItems: EnhancedSearchResultItem[] = [];
 
-  for (const product of PRODUCTS) {
+  for (const product of candidateProducts) {
     let textScore = 0;
     const matchedAliases: string[] = [];
 
@@ -1092,13 +1132,28 @@ export function executeWaynoSearch(
       );
 
       if (suppliersForProd.length > 0) {
-        // Calculate dynamic real-time distance from user shop to each wholesaler
+        // Hierarchical Radius Bounding Box: Fast AABB check before expensive Haversine trigonometric calculation
+        const maxThresholdKm = product.maxSearchRadiusKm || (nodeEligibility.productNodeLevel === 'LOCAL_NODE' ? 20 : 60);
+        const aabbBox = calculateAABB(userLat, userLng, maxThresholdKm);
+
         let enrichedSuppliers = suppliersForProd.map((sp) => {
           const wholesaler = WHOLESALERS.find((w) => w.id === sp.wholesalerLocationId);
-          const distanceKm = wholesaler 
-            ? calculateDistanceKm(userLat, userLng, wholesaler.latitude, wholesaler.longitude)
-            : sp.distanceKm;
+          if (!wholesaler) {
+            return { ...sp, distanceKm: sp.distanceKm };
+          }
 
+          aabbEvaluatedCount++;
+          // AABB pre-filtering: if wholesaler coordinate falls outside the bounding box, skip full Haversine
+          const inBox = isPointInAABB(wholesaler.latitude, wholesaler.longitude, aabbBox);
+          if (!inBox) {
+            return {
+              ...sp,
+              distanceKm: 999, // Out of corridor bounds
+            };
+          }
+
+          haversineCalculatedCount++;
+          const distanceKm = calculateDistanceKm(userLat, userLng, wholesaler.latitude, wholesaler.longitude);
           return {
             ...sp,
             distanceKm,
@@ -1509,7 +1564,11 @@ export function executeWaynoSearch(
     targetedConquest,
     facets,
     appliedFilters,
-    indexMetrics,
+    indexMetrics: {
+      ...indexMetrics,
+      aabbGeoEvaluated: aabbEvaluatedCount,
+      exactHaversineCalculated: haversineCalculatedCount,
+    },
     synonymsApplied,
     fuzzyMatches,
     sequenceId: ++monotonicSearchSequence,
@@ -1582,7 +1641,34 @@ export function getAutocompleteSuggestions(prefix: string): AutocompleteSuggesti
     ];
   }
 
+  // 0. Instant Radix Trie Keystroke Prefix Match (< 1ms)
+  const trieMatches = prefixTrieInstance.searchPrefix(clean, 7);
+  if (trieMatches.length >= 4) {
+    return trieMatches.map((t) => ({
+      id: t.id,
+      type: t.type as any,
+      title: t.title,
+      subtitle: t.subtitle,
+      query: t.query,
+      badge: t.badge,
+      iconName: t.iconName,
+    }));
+  }
+
   const suggestions: AutocompleteSuggestion[] = [];
+
+  // Seed with available trie matches
+  for (const t of trieMatches) {
+    suggestions.push({
+      id: t.id,
+      type: t.type as any,
+      title: t.title,
+      subtitle: t.subtitle,
+      query: t.query,
+      badge: t.badge,
+      iconName: t.iconName,
+    });
+  }
 
   // 1. Check Kenyan / Sheng terminology
   for (const [termKey, dialect] of Object.entries(KENYAN_TERMINOLOGY_MAP)) {
