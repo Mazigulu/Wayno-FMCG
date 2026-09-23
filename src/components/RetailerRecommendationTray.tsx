@@ -1,20 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Sparkles, 
-  ShoppingBag, 
-  Search, 
-  MapPin, 
-  Clock, 
-  Sliders, 
-  ChevronRight, 
-  Info, 
   Plus, 
-  Check, 
-  Bike, 
-  TrendingUp, 
-  AlertCircle,
-  ShieldCheck,
-  Zap
+  Check 
 } from 'lucide-react';
 import { 
   RecommendationExecutionResult, 
@@ -26,8 +14,8 @@ interface RetailerRecommendationTrayProps {
   recommendationResult: RecommendationExecutionResult | null;
   currentShop: RetailerShop;
   searchQuery: string;
-  onSelectProductForInspect: (item: RecommendedProductItem) => void;
-  onOpenModelInspector: () => void;
+  onSelectProductForInspect?: (item: RecommendedProductItem) => void;
+  onOpenModelInspector?: () => void;
   onAddToCart: (product: Product, supplierProduct: SupplierProduct) => void;
   cartQuantities: Record<string, number>;
 }
@@ -36,8 +24,6 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
   recommendationResult,
   currentShop,
   searchQuery,
-  onSelectProductForInspect,
-  onOpenModelInspector,
   onAddToCart,
   cartQuantities
 }) => {
@@ -80,7 +66,7 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
 
   return (
     <div className="bg-gradient-to-b from-slate-50 to-white border border-slate-200 rounded-md p-3.5 sm:p-4 space-y-3 shadow-2xs">
-      {/* Header with Search-First Safeguard note */}
+      {/* Header for Merchant Top Restock Picks */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-2.5">
         <div className="space-y-0.5">
           <div className="flex items-center space-x-2">
@@ -88,26 +74,15 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
               <Sparkles className="w-3 h-3 text-amber-400" />
             </div>
             <h3 className="text-xs sm:text-sm font-bold text-slate-900">
-              Recommended for {currentShop.name}
+              Popular Restock for {currentShop.name}
             </h3>
-            <span className="text-[10px] bg-slate-200 text-slate-800 font-semibold px-1.5 py-0.2 rounded font-mono">
+            <span className="text-[10px] bg-slate-100 text-slate-700 font-semibold px-1.5 py-0.2 rounded border border-slate-200">
               {timeLabel}
             </span>
           </div>
           <p className="text-[11px] text-slate-500">
-            Ranked by 5 real-time signals: Historical Searches • Purchases • Location • Time • Product Preferences.
+            High-turnover FMCG staples trending in your delivery zone.
           </p>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={onOpenModelInspector}
-            className="flex items-center space-x-1 text-[11px] font-semibold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100/70 border border-blue-200 px-2.5 py-1 rounded transition-colors cursor-pointer"
-          >
-            <Sliders className="w-3 h-3" />
-            <span>Inspect 5-Signal Model</span>
-            <ChevronRight className="w-3 h-3 ml-0.5" />
-          </button>
         </div>
       </div>
 
@@ -134,17 +109,6 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
                   <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border uppercase font-mono ${badge.bg}`}>
                     {badge.label}
                   </span>
-                  <button
-                    onClick={() => {
-                      onSelectProductForInspect(item);
-                      onOpenModelInspector();
-                    }}
-                    className="text-[10px] font-medium text-slate-500 hover:text-blue-700 flex items-center space-x-1 cursor-pointer"
-                    title="Inspect why this SKU was recommended"
-                  >
-                    <Info className="w-3 h-3 text-blue-600" />
-                    <span>Score: {scoreBreakdown.compositeScore}/100</span>
-                  </button>
                 </div>
 
                 <div className="flex items-center space-x-3">
@@ -165,11 +129,6 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
                       {product.packSize}
                     </div>
                   </div>
-                </div>
-
-                {/* Explanatory Tag */}
-                <div className="bg-slate-50 border border-slate-100 rounded px-2 py-1 text-[10px] text-slate-600 line-clamp-1">
-                  💡 {scoreBreakdown.explanationTags[0] || item.recommendationReason}
                 </div>
               </div>
 

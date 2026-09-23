@@ -139,34 +139,34 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
   return (
     <div className="space-y-4 pb-20">
       {/* Rider Profile Card & Sub-Navigation Ribbon */}
-      <div className="bg-white border border-slate-200 rounded-md p-3.5 sm:p-4 text-slate-900 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center space-x-3">
+      <div className="bg-white border border-slate-200 rounded-md p-3.5 sm:p-4 text-slate-900 shadow-2xs min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 min-w-0">
+          <div className="flex items-center space-x-3 min-w-0 flex-1">
             <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
               <Bike className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-sm font-bold text-slate-900">{activeRider.name}</h1>
-                <span className="text-[10px] font-semibold bg-slate-100 text-slate-800 px-1.5 py-0.2 rounded border border-slate-200">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center space-x-2 min-w-0">
+                <h1 className="text-sm font-bold text-slate-900 truncate">{activeRider.name}</h1>
+                <span className="text-[10px] font-semibold bg-slate-100 text-slate-800 px-1.5 py-0.2 rounded border border-slate-200 shrink-0">
                   ★ {activeRider.rating}
                 </span>
-                <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono border border-slate-200">
+                <span className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.2 rounded font-mono border border-slate-200 shrink-0">
                   {activeRider.vehiclePlate}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 truncate max-w-xs sm:max-w-md">
+              <p className="text-[11px] text-slate-500 truncate max-w-full">
                 {activeRider.vehicleType} · {activeRider.phone} · Duty: {activeRider.status.replace(/_/g, ' ')}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
-            <label className="text-[11px] text-slate-500 font-medium hidden sm:inline">Switch Account:</label>
+          <div className="flex items-center space-x-2 shrink-0 min-w-0 max-w-full sm:max-w-[240px] md:max-w-[280px]">
+            <label className="text-[11px] text-slate-500 font-medium hidden sm:inline shrink-0">Switch Account:</label>
             <select
               value={activeRiderId}
               onChange={(e) => setActiveRiderId(e.target.value)}
-              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded px-2.5 py-1 font-medium focus:border-slate-800 focus:outline-none transition-colors cursor-pointer"
+              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded px-2.5 py-1.5 font-medium focus:border-slate-800 focus:outline-none transition-colors cursor-pointer w-full min-w-0 max-w-full truncate"
             >
               {riders.map((r) => (
                 <option key={r.id} value={r.id}>

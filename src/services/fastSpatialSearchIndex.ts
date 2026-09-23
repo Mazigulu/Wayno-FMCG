@@ -200,8 +200,9 @@ export class ProductPrefixTrie {
 
     // Index products
     for (const product of PRODUCTS) {
+      const productId = product.id.startsWith('prod_') ? product.id : `prod_${product.id}`;
       const payload: TriePayload = {
-        id: `prod_${product.id}`,
+        id: productId,
         type: 'PRODUCT',
         title: product.name,
         subtitle: `${product.packSize} • RRP KES ${product.recommendedRetailPrice}`,
@@ -237,29 +238,29 @@ export class ProductPrefixTrie {
       }
     }
 
-    // Index Kenyan Sheng / Swahili vernacular
-    const shengEntries: Array<{ raw: string; concept: string; dialect: string; query: string }> = [
-      { raw: 'unga', concept: 'maize flour', dialect: 'Swahili/Trade', query: 'unga wa ugali 2kg' },
-      { raw: 'ugali', concept: 'maize flour', dialect: 'Swahili', query: 'unga wa ugali' },
-      { raw: 'chapo', concept: 'wheat flour', dialect: 'Sheng', query: 'wheat flour' },
-      { raw: 'mafuta', concept: 'cooking oil', dialect: 'Swahili', query: 'cooking oil' },
-      { raw: 'salad', concept: 'liquid cooking oil', dialect: 'Kenyan English', query: 'fresh fri cooking oil' },
-      { raw: 'sabuni', concept: 'laundry bar soap', dialect: 'Swahili', query: 'sabuni' },
-      { raw: 'sukari', concept: 'sugar', dialect: 'Swahili', query: 'sugar' },
-      { raw: 'chai', concept: 'tea leaves', dialect: 'Swahili', query: 'ketepa tea' },
-      { raw: 'njugu', concept: 'roasted peanuts', dialect: 'Sheng', query: 'peanuts' },
-      { raw: 'bluband', concept: 'blue band margarine', dialect: 'Vernacular', query: 'blue band' },
+    // Index common Kenyan commodity shortcuts directly with clear retail category and product context
+    const retailShortcuts: Array<{ raw: string; title: string; category: string; subtitle: string; query: string }> = [
+      { raw: 'unga', title: 'Maize & Wheat Flour (Unga)', category: 'Flour', subtitle: 'Baking & maize meal staples', query: 'unga wa ugali 2kg' },
+      { raw: 'ugali', title: 'Maize Meal Flour (Unga)', category: 'Flour', subtitle: 'Premium 2kg bales in stock', query: 'unga wa ugali' },
+      { raw: 'chapo', title: 'Wheat Baking Flour', category: 'Baking Flour', subtitle: 'All-purpose chapati wheat flour', query: 'wheat flour' },
+      { raw: 'mafuta', title: 'Edible Cooking Oil', category: 'Cooking Oil', subtitle: 'Pure vegetable cooking oil & jerrycans', query: 'cooking oil' },
+      { raw: 'salad', title: 'Fresh Fri Cooking Oil', category: 'Cooking Oil', subtitle: 'Refined vegetable salad oil', query: 'fresh fri cooking oil' },
+      { raw: 'sabuni', title: 'Laundry & Bar Soap', category: 'Soap', subtitle: 'Multi-purpose washing & bar soaps', query: 'sabuni' },
+      { raw: 'sukari', title: 'Pure Cane Sugar', category: 'Sugar', subtitle: 'Table sugar & sweetener 50kg/1kg', query: 'sugar' },
+      { raw: 'chai', title: 'Tea Leaves & Beverage', category: 'Beverages', subtitle: 'Kenyan black tea & infusions', query: 'ketepa tea' },
+      { raw: 'njugu', title: 'Roasted Peanuts & Snacks (Njugu)', category: 'Snacks', subtitle: 'Freshly roasted peanuts & groundnuts', query: 'peanuts' },
+      { raw: 'bluband', title: 'Blue Band Margarine', category: 'Margarine', subtitle: 'Fortified breakfast spread & baking', query: 'blue band' },
     ];
 
-    for (const s of shengEntries) {
+    for (const s of retailShortcuts) {
       this.insert(s.raw, {
-        id: `sheng_${s.raw}`,
-        type: 'SHENG_VERNACULAR',
-        title: `${s.raw} (${s.concept})`,
-        subtitle: `${s.dialect} • Quick vernacular shortcut`,
+        id: `shortcut_${s.raw}`,
+        type: 'CATEGORY',
+        title: s.title,
+        subtitle: s.subtitle,
         query: s.query,
-        badge: 'Sheng',
-        iconName: 'Globe',
+        badge: s.category,
+        iconName: 'Tag',
         popularityScore: 95,
       });
     }

@@ -1670,30 +1670,15 @@ export function getAutocompleteSuggestions(prefix: string): AutocompleteSuggesti
     });
   }
 
-  // 1. Check Kenyan / Sheng terminology
-  for (const [termKey, dialect] of Object.entries(KENYAN_TERMINOLOGY_MAP)) {
-    if (termKey.includes(clean) || clean.includes(termKey)) {
-      suggestions.push({
-        id: `sheng_${termKey}`,
-        type: 'SHENG_VERNACULAR',
-        title: `${dialect.rawTerm} (${dialect.canonicalConcept})`,
-        subtitle: `${dialect.dialect} • ${dialect.englishTranslation}`,
-        query: dialect.rawTerm,
-        badge: dialect.dialect,
-        iconName: 'Globe'
-      });
-    }
-  }
-
-  // 2. Check Brands
+  // 1. Check Brands
   for (const [brandKey, brandName] of Object.entries(BRAND_ALIASES)) {
     if (brandKey.includes(clean) || brandName.toLowerCase().includes(clean)) {
-      if (!suggestions.some((s) => s.title.includes(brandName))) {
+      if (!suggestions.some((s) => s.title.toLowerCase() === brandName.toLowerCase() || s.query.toLowerCase() === brandName.toLowerCase())) {
         suggestions.push({
           id: `brand_${brandKey}`,
           type: 'BRAND',
           title: brandName,
-          subtitle: `FMCG Brand Catalog • Verified Kenyan distributor`,
+          subtitle: `FMCG Brand • Verified Kenyan distributor`,
           query: brandName.toLowerCase(),
           badge: 'Brand',
           iconName: 'Building'
@@ -1702,37 +1687,21 @@ export function getAutocompleteSuggestions(prefix: string): AutocompleteSuggesti
     }
   }
 
-  // 2.5. Check Categories
+  // 2. Check Categories
   const categories = Array.from(new Set(PRODUCTS.map((p) => p.internalCategory)));
   for (const cat of categories) {
     if (cat.toLowerCase().includes(clean)) {
       const count = PRODUCTS.filter((p) => p.internalCategory === cat).length;
-      suggestions.push({
-        id: `cat_${cat.replace(/\s+/g, '_')}`,
-        type: 'CATEGORY',
-        title: cat,
-        subtitle: `FMCG Category • ${count} verified items in stock`,
-        query: cat,
-        badge: 'Category',
-        iconName: 'Tag',
-        count,
-      });
-    }
-  }
-
-  // 2.6. Check Synonym Clusters
-  for (const cluster of FMCG_SYNONYM_CLUSTERS) {
-    if (cluster.terms.some((t) => t.includes(clean))) {
-      const matchingTerm = cluster.terms.find((t) => t.includes(clean)) || cluster.terms[0];
-      if (!suggestions.some((s) => s.query.toLowerCase() === matchingTerm.toLowerCase())) {
+      if (!suggestions.some((s) => s.title.toLowerCase() === cat.toLowerCase())) {
         suggestions.push({
-          id: `syn_${cluster.id}`,
-          type: 'NEED_INTENT',
-          title: `${matchingTerm} (${cluster.name})`,
-          subtitle: `Synonym cluster • Resolves ${cluster.terms.slice(0, 3).join(', ')}`,
-          query: matchingTerm,
-          badge: 'Synonym',
-          iconName: 'Sparkles',
+          id: `cat_${cat.replace(/\s+/g, '_')}`,
+          type: 'CATEGORY',
+          title: cat,
+          subtitle: `Category • ${count} verified items in stock`,
+          query: cat,
+          badge: 'Category',
+          iconName: 'Tag',
+          count,
         });
       }
     }
@@ -1744,15 +1713,18 @@ export function getAutocompleteSuggestions(prefix: string): AutocompleteSuggesti
       product.name.toLowerCase().includes(clean) ||
       product.keywords.some((k) => k.toLowerCase().includes(clean))
     ) {
-      suggestions.push({
-        id: `prod_${product.id}`,
-        type: 'PRODUCT',
-        title: product.name,
-        subtitle: `${product.packSize} • RRP KES ${product.recommendedRetailPrice}`,
-        query: product.name,
-        badge: product.internalCategory.split(' ')[0],
-        iconName: 'ShoppingBag'
-      });
+      const prodId = product.id.startsWith('prod_') ? product.id : `prod_${product.id}`;
+      if (!suggestions.some((s) => s.id === prodId || s.query.toLowerCase() === product.name.toLowerCase())) {
+        suggestions.push({
+          id: prodId,
+          type: 'PRODUCT',
+          title: product.name,
+          subtitle: `${product.packSize} • RRP KES ${product.recommendedRetailPrice}`,
+          query: product.name,
+          badge: product.internalCategory.split(' ')[0],
+          iconName: 'ShoppingBag'
+        });
+      }
     }
   }
 
@@ -1773,5 +1745,16 @@ export function getAutocompleteSuggestions(prefix: string): AutocompleteSuggesti
     });
   }
 
-  return suggestions.slice(0, 7);
+  // Deduplicate suggestions by unique ID and query to prevent React key collisions
+  const seenIds = new Set<string>();
+  const seenQueries = new Set<string>();
+  const uniqueSuggestions = suggestions.filter((item) => {
+    const q = item.query.toLowerCase().trim();
+    if (seenIds.has(item.id) || seenQueries.has(q)) return false;
+    seenIds.add(item.id);
+    seenQueries.add(q);
+    return true;
+  });
+
+  return uniqueSuggestions.slice(0, 7);
 }

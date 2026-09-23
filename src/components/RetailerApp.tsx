@@ -9,6 +9,7 @@ import {
   Plus, 
   Minus, 
   ArrowRight,
+  TrendingUp,
   Package,
   Bike,
   Building,
@@ -24,12 +25,12 @@ import {
   Tag,
   Star,
   Zap,
-  Filter,
   Layers,
   Globe,
   Compass,
   CheckCircle2,
   Sliders,
+  Filter,
   X
 } from 'lucide-react';
 import { 
@@ -48,19 +49,15 @@ import {
   recordPromotionalImpression,
   recordSearchResultClick
 } from '../services/searchEngine';
-import { SearchExecutionResultEnhanced, AutocompleteSuggestion, SearchFilters } from '../types/search';
+import { SearchExecutionResultEnhanced, AutocompleteSuggestion } from '../types/search';
 import { PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS } from '../data/mockData';
 import { 
-  generateRetailerRecommendations, 
-  DEFAULT_RECOMMENDATION_WEIGHTS 
+  generateRetailerRecommendations 
 } from '../services/recommendationEngine';
 import { 
-  RecommendationExecutionResult, 
-  RecommendedProductItem, 
-  RecommendationEngineWeights 
+  RecommendationExecutionResult 
 } from '../types/recommendation';
 import { RetailerRecommendationTray } from './RetailerRecommendationTray';
-import { RecommendationModelInspector } from './RecommendationModelInspector';
 
 export type RetailerPage = 'catalog' | 'orders' | 'profile';
 
@@ -102,8 +99,6 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
   const [demandAlertSent, setDemandAlertSent] = useState(false);
   const [heroIndex, setHeroIndex] = useState(0);
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
-  const [showFilterDrawer, setShowFilterDrawer] = useState(false);
 
   // Recent searches local state (persisting up to 5 frequent queries)
   const [recentSearches, setRecentSearches] = useState<string[]>(() => {
@@ -155,12 +150,8 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
     }
   };
 
-  // 5-Signal Recommendation Engine State (Section 45)
+  // Recommendations for Retailer Tray
   const [recommendationResult, setRecommendationResult] = useState<RecommendationExecutionResult | null>(null);
-  const [isModelInspectorOpen, setIsModelInspectorOpen] = useState(false);
-  const [selectedItemForInspect, setSelectedItemForInspect] = useState<RecommendedProductItem | null>(null);
-  const [recommendationWeights, setRecommendationWeights] = useState<RecommendationEngineWeights>(DEFAULT_RECOMMENDATION_WEIGHTS);
-  const [simulatedHour, setSimulatedHour] = useState<number | undefined>(undefined);
 
   // Compute recommendations reactively
   useEffect(() => {
@@ -168,18 +159,13 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
       const res = generateRetailerRecommendations(
         currentShop,
         recentSearches,
-        activeOrders,
-        recommendationWeights,
-        simulatedHour
+        activeOrders
       );
       setRecommendationResult(res);
-      if (!selectedItemForInspect && res.recommendations.length > 0) {
-        setSelectedItemForInspect(res.recommendations[0]);
-      }
     } catch (err) {
       console.error('Failed to generate retailer recommendations:', err);
     }
-  }, [currentShop, recentSearches, activeOrders, recommendationWeights, simulatedHour]);
+  }, [currentShop, recentSearches, activeOrders]);
 
   const cartQuantities = useMemo(() => {
     const map: Record<string, number> = {};
@@ -214,6 +200,14 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
     { label: 'Sabuni (Soap)', query: 'sabuni' },
   ];
 
+  const TRENDING_SEARCHES = [
+    { label: 'Unga 2kg Bale (Jogoo / Ndovu)', query: 'unga 2kg' },
+    { label: 'Cooking Oil 20L Jerrycan', query: 'cooking oil' },
+    { label: 'Royco Mchuzi Mix Cubes', query: 'royco' },
+    { label: 'Broadways Bread White 400g', query: 'broadways' },
+    { label: 'Menengai Cream Bar Soap', query: 'menengai' }
+  ];
+
   const CATEGORIES = [
     'All',
     'Promotional Rebates',
@@ -224,14 +218,13 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
     'Beverages & Snacks'
   ];
 
-  // Perform search on query or filter changes
+  // Perform search on query or ranking strategy changes
   useEffect(() => {
     const searchOptions = {
       userLat: currentShop.latitude,
       userLng: currentShop.longitude,
       shopId: currentShop.id,
       rankingStrategy,
-      filters: searchFilters,
     };
 
     if (searchQuery.trim().length > 0) {
@@ -244,7 +237,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
       setSuggestions([]);
     }
     setDemandAlertSent(false);
-  }, [searchQuery, currentShop, rankingStrategy, searchFilters]);
+  }, [searchQuery, currentShop, rankingStrategy]);
 
   // Debounced registration of typed searches into recent searches
   useEffect(() => {
@@ -256,9 +249,22 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
     }
   }, [searchQuery]);
 
+  const handleSearchSubmit = () => {
+    const clean = searchQuery.trim();
+    if (clean) {
+      addToRecentSearches(clean);
+    }
+    setSelectedCategory('All');
+    setIsAutocompleteOpen(false);
+    const inputEl = document.getElementById('retailer-fmcg-search') as HTMLInputElement | null;
+    inputEl?.blur();
+  };
+
   const handleChipClick = (query: string) => {
     setSearchQuery(query);
+    setSelectedCategory('All');
     addToRecentSearches(query);
+    setIsAutocompleteOpen(false);
   };
 
   const handleAdd = (
@@ -304,32 +310,32 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   return (
     <div className="space-y-4 pb-20">
       {/* Top Outlook Page Header & Sub-Navigation Bar */}
-      <div className="bg-white border border-slate-200 rounded-md p-3.5 sm:p-4 text-slate-900 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center space-x-3">
+      <div className="bg-white border border-slate-200 rounded-md p-3.5 sm:p-4 text-slate-900 shadow-2xs min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 min-w-0">
+          <div className="flex items-center space-x-3 min-w-0 flex-1">
             <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
               <Building className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-sm font-bold text-slate-900">{currentShop.name}</h1>
-                <span className="text-[10px] font-medium bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center space-x-2 min-w-0">
+                <h1 className="text-sm font-bold text-slate-900 truncate">{currentShop.name}</h1>
+                <span className="text-[10px] font-medium bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200 shrink-0">
                   {currentShop.serviceZoneId.replace(/_/g, ' ').toUpperCase()}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 truncate max-w-xs sm:max-w-md">
+              <p className="text-[11px] text-slate-500 truncate max-w-full">
                 {currentShop.address} · Owner: {currentShop.shopOwner}
               </p>
             </div>
           </div>
 
           {/* Quick shop switcher */}
-          <div className="flex items-center space-x-2">
-            <label className="text-[11px] text-slate-500 font-medium hidden md:inline">Switch Duka:</label>
+          <div className="flex items-center space-x-2 shrink-0 min-w-0 max-w-full sm:max-w-[240px] md:max-w-[280px]">
+            <label className="text-[11px] text-slate-500 font-medium hidden md:inline shrink-0">Switch Duka:</label>
             <select
               value={currentShop.id}
               onChange={(e) => onSelectShop(e.target.value)}
-              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded px-2.5 py-1 font-medium focus:border-slate-800 focus:outline-none transition-colors cursor-pointer"
+              className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded px-2.5 py-1.5 font-medium focus:border-slate-800 focus:outline-none transition-colors cursor-pointer w-full min-w-0 max-w-full truncate"
               aria-label="Switch Duka Location"
             >
               {allShops.map((s) => (
@@ -393,27 +399,6 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
       {/* ========================================================================= */}
       {currentPage === 'catalog' && (
         <div className="space-y-4">
-          {/* Zero-Touch Wholesale Sourcing Assurance Banner */}
-          <div className="bg-emerald-50/80 border border-emerald-200 rounded-md p-3 flex items-center justify-between text-xs gap-3">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-7 h-7 rounded bg-emerald-700 text-white flex items-center justify-center font-bold shrink-0">
-                <Sparkles className="w-3.5 h-3.5" />
-              </div>
-              <div>
-                <span className="font-bold text-emerald-950 block text-xs">
-                  Zero-Touch Sourcing Guarantee
-                </span>
-                <p className="text-[11px] text-emerald-800">
-                  You never have to choose between wholesalers. Wayno automatically secures the lowest rate from nearby depots and coordinates doorstep delivery.
-                </p>
-              </div>
-            </div>
-            <div className="hidden sm:flex items-center space-x-1.5 text-[11px] font-semibold text-emerald-900 bg-white border border-emerald-200 px-2.5 py-1 rounded shadow-2xs shrink-0">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>100% Automated Depot Routing</span>
-            </div>
-          </div>
-
           {/* Active Order Progress Banner if any */}
           {activeOrders.length > 0 && (
             <div className="bg-white border border-slate-200 rounded-md p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-slate-900">
@@ -521,367 +506,280 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
           )}
 
           {/* Search Box */}
-          <div className="bg-white border border-slate-200 rounded-md p-4 sm:p-5 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="space-y-0.5">
-                <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                  Wholesale FMCG Procurement
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Natural language & Sheng search matching regional wholesale depots with sub-25ms multi-factor ranking.
-                </p>
-              </div>
+          {/* Hero Search Section - Inspired by modern Google Search */}
+          <div className="bg-gradient-to-b from-white via-slate-50/50 to-white border border-slate-200/90 rounded-2xl p-5 sm:p-7 shadow-xs space-y-4">
+            {/* Header & Context */}
+            <div className="text-center max-w-xl mx-auto space-y-1">
+              <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-slate-900">
+                Find Wholesale Goods in Seconds
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-500">
+                Search bulk flour, cooking oil, beverages, and daily FMCG staples at live Nairobi depot rates
+              </p>
+            </div>
 
-              {/* Ranking & Filter Selector */}
-              <div className="flex items-center space-x-2 shrink-0">
-                <span className="text-[11px] text-slate-500 font-medium">Rank By:</span>
+            {/* Google-Style Centerpiece Search Bar - Plain & Immediate (No Animations) */}
+            <div className="max-w-2xl mx-auto w-full relative min-h-[52px] sm:min-h-[56px] z-30">
+              <div 
+                className={`bg-white ${
+                  isAutocompleteOpen
+                    ? 'absolute top-0 left-0 right-0 rounded-[28px] shadow-2xl border border-slate-200/90 overflow-hidden z-40'
+                    : 'relative w-full rounded-full border border-slate-200 hover:border-slate-300 shadow-md'
+                }`}
+              >
+                {/* Search Input Row (Top Unit) */}
+                <div className="flex items-center px-4 sm:px-5 py-3 sm:py-3.5">
+                  {/* Search Magnifier Icon */}
+                  <div className="pr-2 sm:pr-3 flex items-center pointer-events-none text-slate-400">
+                    <Search className="w-5 h-5 text-slate-400" />
+                  </div>
+
+                  {/* Input Field */}
+                  <input
+                    type="search"
+                    id="retailer-fmcg-search"
+                    name="q"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-form-type="other"
+                    data-lpignore="true"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      if (selectedCategory !== 'All') {
+                        setSelectedCategory('All');
+                      }
+                      setIsAutocompleteOpen(true);
+                    }}
+                    onFocus={() => setIsAutocompleteOpen(true)}
+                    onBlur={() => setTimeout(() => setIsAutocompleteOpen(false), 220)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleSearchSubmit();
+                      }
+                    }}
+                    placeholder="Try 'unga 2kg bale', 'bluband', 'cooking oil 20l', or 'omo'..."
+                    className="w-full bg-transparent text-slate-900 placeholder-slate-400 focus:outline-none text-sm sm:text-base font-normal tracking-normal [&::-webkit-search-cancel-button]:hidden"
+                  />
+
+                  {/* Right controls inside pill */}
+                  <div className="pr-1 sm:pr-1.5 flex items-center space-x-1.5 shrink-0">
+                    {searchQuery && (
+                      <button
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setSearchQuery('');
+                          setSelectedCategory('All');
+                          setIsAutocompleteOpen(false);
+                        }}
+                        className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                        title="Clear search"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+
+                    {/* Primary Enter / Search Action Button */}
+                    <button
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSearchSubmit();
+                      }}
+                      className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full shadow-xs cursor-pointer"
+                      title="Search (Enter ↵)"
+                    >
+                      <span>Search</span>
+                      <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Extended Unit Content: Plain & Immediate without animations */}
+                {isAutocompleteOpen && (
+                  <div className="border-t border-slate-100/90 pt-1 pb-2.5 text-slate-700">
+                    {/* Empty query: Show Recent Searches & Trending FMCG Searches */}
+                    {!searchQuery.trim() && (
+                      <>
+                        {recentSearches.length > 0 && (
+                          <div className="mb-2">
+                            <div className="px-4 py-1.5 text-[11px] font-bold text-slate-400 flex justify-between items-center tracking-wider uppercase">
+                              <span>Recent Searches</span>
+                              <button
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  clearRecentSearches();
+                                }}
+                                className="text-[11px] text-slate-400 hover:text-red-600 font-semibold cursor-pointer lowercase"
+                              >
+                                Clear history
+                              </button>
+                            </div>
+                            {recentSearches.map((term) => (
+                              <div
+                                key={term}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  setSearchQuery(term);
+                                  setSelectedCategory('All');
+                                  addToRecentSearches(term);
+                                  setIsAutocompleteOpen(false);
+                                }}
+                                className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-sm group"
+                              >
+                                <div className="flex items-center space-x-3 text-slate-700 group-hover:text-blue-600 min-w-0">
+                                  <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                                  <span className="font-medium text-slate-800 truncate">{term}</span>
+                                </div>
+                                <button
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    removeFromRecentSearches(term);
+                                  }}
+                                  className="text-slate-300 hover:text-red-500 p-1 rounded"
+                                  title="Remove"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Trending Searches Section */}
+                        <div className={recentSearches.length > 0 ? "border-t border-slate-100 pt-2" : "pt-1"}>
+                          <div className="px-4 py-1.5 text-[11px] font-bold text-slate-400 tracking-wider uppercase">
+                            Trending Searches
+                          </div>
+                          {TRENDING_SEARCHES.map((item) => (
+                            <div
+                              key={item.query}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setSearchQuery(item.query);
+                                setSelectedCategory('All');
+                                addToRecentSearches(item.query);
+                                setIsAutocompleteOpen(false);
+                              }}
+                              className="px-4 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-sm group"
+                            >
+                              <div className="flex items-center space-x-3 text-slate-700 group-hover:text-blue-600 min-w-0">
+                                <TrendingUp className="w-4 h-4 text-slate-400 shrink-0" />
+                                <span className="font-medium text-slate-800 truncate">{item.label}</span>
+                              </div>
+                              <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                Wholesale
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Autocomplete Predictions when typing */}
+                    {searchQuery.trim() && suggestions.length > 0 && (
+                      <div className="space-y-0.5">
+                        {suggestions.map((sug, idx) => (
+                          <div
+                            key={`${sug.id}-${idx}`}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setSearchQuery(sug.query);
+                              setSelectedCategory('All');
+                              addToRecentSearches(sug.query);
+                              setIsAutocompleteOpen(false);
+                            }}
+                            className="px-4 py-2.5 hover:bg-slate-50/90 cursor-pointer flex items-center justify-between text-sm group"
+                          >
+                            <div className="flex items-center space-x-3 min-w-0">
+                              <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                              <div className="truncate">
+                                <span className="font-semibold text-slate-900">{sug.title}</span>
+                                {sug.subtitle && (
+                                  <span className="text-xs text-slate-400 ml-2 font-normal">{sug.subtitle}</span>
+                                )}
+                              </div>
+                            </div>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase shrink-0 tracking-wider ${
+                              sug.type === 'BRAND' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                              sug.type === 'PACK_SIZE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                              sug.type === 'CATEGORY' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
+                              'bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}>
+                              {sug.badge || (sug.type === 'PRODUCT' ? 'Product' : sug.type.replace('_', ' '))}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* If user is typing and no suggestions yet */}
+                    {searchQuery.trim() && suggestions.length === 0 && (
+                      <div
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSearchSubmit();
+                        }}
+                        className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer flex items-center space-x-3 text-sm text-blue-600 group"
+                      >
+                        <Search className="w-4 h-4 text-blue-500 shrink-0" />
+                        <span className="font-medium">
+                          Search live wholesale inventory for <span className="font-bold underline">"{searchQuery}"</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Google-Style Action Buttons & Sort Strip */}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs">
+              <button
+                onClick={() => {
+                  addToRecentSearches(searchQuery || 'Popular');
+                  setSelectedCategory('All');
+                  setIsAutocompleteOpen(false);
+                }}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-4 py-1.5 rounded-full cursor-pointer border border-slate-200"
+              >
+                Search Wholesale
+              </button>
+
+              <button
+                onClick={() => {
+                  const randomChip = SUGGESTED_CHIPS[Math.floor(Math.random() * SUGGESTED_CHIPS.length)];
+                  setSelectedCategory('All');
+                  handleChipClick(randomChip.query);
+                  setIsAutocompleteOpen(false);
+                }}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-4 py-1.5 rounded-full cursor-pointer border border-slate-200 flex items-center space-x-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>I'm Feeling Lucky</span>
+              </button>
+
+              {/* Ranking Mode Dropdown */}
+              <div className="flex items-center space-x-1.5 pl-2 sm:border-l sm:border-slate-200 text-slate-500">
+                <span className="text-[11px] font-medium hidden sm:inline">Sort:</span>
                 <select
                   value={rankingStrategy}
                   onChange={(e) => setRankingStrategy(e.target.value as any)}
-                  className="text-xs bg-slate-50 border border-slate-300 rounded px-2 py-1 font-medium text-slate-800"
+                  className="text-xs bg-white border border-slate-200 rounded-full px-3 py-1 font-medium text-slate-700 hover:border-slate-300 focus:outline-none cursor-pointer"
                 >
-                  <option value="SMART_BALANCED">Smart Rank (Balanced)</option>
+                  <option value="SMART_BALANCED">Recommended (Balanced)</option>
                   <option value="PRICE_LOW">Cheapest Wholesale</option>
                   <option value="DISTANCE_NEAR">Nearest Depot</option>
                   <option value="MARGIN_HIGH">Max Profit Margin</option>
                 </select>
-
-                {/* Filter Drawer Toggle */}
-                <button
-                  onClick={() => setShowFilterDrawer(!showFilterDrawer)}
-                  className={`flex items-center space-x-1 text-xs px-2.5 py-1 rounded font-medium border transition-colors cursor-pointer ${
-                    showFilterDrawer || Object.keys(searchFilters).length > 0
-                      ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <Filter className="w-3.5 h-3.5" />
-                  <span>Filters</span>
-                  {Object.values(searchFilters).filter(Boolean).length > 0 && (
-                    <span className="bg-emerald-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold ml-0.5">
-                      {Object.values(searchFilters).filter(Boolean).length}
-                    </span>
-                  )}
-                </button>
-
-                {/* 5-Signal Recommendation Model Trigger */}
-                <button
-                  onClick={() => setIsModelInspectorOpen(true)}
-                  className="flex items-center space-x-1 text-xs px-2.5 py-1 rounded font-medium border border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-900 transition-colors cursor-pointer"
-                  title="Inspect Section 45: 5-Signal Recommendation Model"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-purple-700" />
-                  <span className="hidden sm:inline">5-Signal Recs</span>
-                  <span className="sm:hidden">Recs</span>
-                </button>
               </div>
             </div>
 
-            {/* Input with Typeahead Autocomplete */}
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Search className="w-4 h-4 text-slate-500" />
-              </div>
-              <input
-                type="text"
-                id="retailer-fmcg-search"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setIsAutocompleteOpen(true);
-                }}
-                onFocus={() => setIsAutocompleteOpen(true)}
-                onBlur={() => setTimeout(() => setIsAutocompleteOpen(false), 200)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    addToRecentSearches(searchQuery);
-                    setIsAutocompleteOpen(false);
-                  }
-                }}
-                placeholder="Search: 'unga 2kg bale', 'bluband', 'njugu', 'things to wash clothes', 'cheapest cooking oil'..."
-                className="w-full bg-white text-slate-900 placeholder-slate-400 border border-slate-300 hover:border-slate-400 focus:border-slate-800 focus:outline-none pl-9 pr-14 py-2 rounded text-xs sm:text-sm transition-colors font-medium"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setIsAutocompleteOpen(false);
-                  }}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-xs font-medium text-slate-500 hover:text-slate-800 cursor-pointer"
-                >
-                  Clear
-                </button>
-              )}
-
-              {/* Autocomplete Dropdown & Recent Searches Dropdown */}
-              {isAutocompleteOpen && (suggestions.length > 0 || (!searchQuery.trim() && recentSearches.length > 0)) && (
-                <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-md shadow-lg overflow-hidden divide-y divide-slate-100">
-                  {/* Empty query: Show Recent Searches list */}
-                  {!searchQuery.trim() && recentSearches.length > 0 && (
-                    <>
-                      <div className="px-3 py-1.5 bg-slate-50 text-[10px] uppercase font-bold text-slate-500 flex justify-between items-center">
-                        <span className="flex items-center space-x-1">
-                          <Clock className="w-3 h-3 text-slate-500" />
-                          <span>Recent Searches ({recentSearches.length})</span>
-                        </span>
-                        <button
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            clearRecentSearches();
-                          }}
-                          className="text-[10px] text-slate-400 hover:text-red-600 lowercase underline cursor-pointer"
-                        >
-                          clear history
-                        </button>
-                      </div>
-                      {recentSearches.map((term) => (
-                        <div
-                          key={term}
-                          onMouseDown={() => {
-                            setSearchQuery(term);
-                            addToRecentSearches(term);
-                            setIsAutocompleteOpen(false);
-                          }}
-                          className="px-3.5 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <Clock className="w-3.5 h-3.5 text-slate-400" />
-                            <span className="font-semibold text-slate-900">{term}</span>
-                          </div>
-                          <button
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              removeFromRecentSearches(term);
-                            }}
-                            className="text-slate-400 hover:text-red-600 p-1"
-                            title="Remove"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </>
-                  )}
-
-                  {/* Suggestions when typing */}
-                  {suggestions.length > 0 && (
-                    <>
-                      <div className="px-3 py-1.5 bg-slate-50 text-[10px] uppercase font-bold text-slate-500 flex justify-between">
-                        <span>Sub-15ms Autocomplete & Sheng Suggestions</span>
-                        <span>Click to apply query</span>
-                      </div>
-                      {suggestions.map((sug) => (
-                        <div
-                          key={sug.id}
-                          onMouseDown={() => {
-                            setSearchQuery(sug.query);
-                            addToRecentSearches(sug.query);
-                            setIsAutocompleteOpen(false);
-                          }}
-                          className="px-3.5 py-2 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <span className="font-semibold text-slate-900">{sug.title}</span>
-                            {sug.subtitle && (
-                              <span className="text-[11px] text-slate-500">{sug.subtitle}</span>
-                            )}
-                          </div>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                            sug.type === 'SHENG_VERNACULAR' ? 'bg-purple-50 text-purple-700 border border-purple-200' :
-                            sug.type === 'BRAND' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                            sug.type === 'PACK_SIZE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                            sug.type === 'CATEGORY' ? 'bg-amber-50 text-amber-800 border border-amber-200' :
-                            'bg-slate-100 text-slate-700'
-                          }`}>
-                            {sug.badge || sug.type}
-                          </span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Faceted Filter Drawer / Bar if open */}
-            {showFilterDrawer && searchResult?.facets && (
-              <div className="bg-slate-50 border border-slate-200 rounded p-3.5 space-y-3 text-xs">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <span className="font-bold text-slate-900 flex items-center space-x-1.5">
-                    <Filter className="w-3.5 h-3.5" />
-                    <span>Faceted Search Filters (Geo-Aware Availability & Inventory)</span>
-                  </span>
-                  <button
-                    onClick={() => setSearchFilters({})}
-                    className="text-[11px] text-slate-500 hover:text-red-700 font-semibold cursor-pointer"
-                  >
-                    Reset All Filters
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  {/* Supply Node Tree Tier Filter */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 uppercase">Supply Node Tree Tier</label>
-                    <div className="flex items-center space-x-1 flex-wrap gap-y-1">
-                      {[
-                        { label: 'All Tiers', val: undefined },
-                        { label: '🌐 Root (National)', val: 'ROOT' },
-                        { label: '🏛️ Regional', val: 'REGION' },
-                        { label: '📍 Local 20km', val: 'LOCAL_NODE' },
-                      ].map((tier) => (
-                        <button
-                          key={tier.label}
-                          onClick={() => setSearchFilters((prev) => ({ ...prev, supplyNodeLevel: tier.val as any }))}
-                          className={`px-2 py-0.5 rounded text-[11px] font-medium border cursor-pointer ${
-                            (searchFilters.supplyNodeLevel === tier.val || (!searchFilters.supplyNodeLevel && tier.val === undefined))
-                              ? 'bg-slate-900 text-white border-slate-900'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          {tier.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Geo-Distance Corridor Filter */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 uppercase">Max Depot Distance</label>
-                    <div className="flex items-center space-x-1 flex-wrap gap-y-1">
-                      {[
-                        { label: 'All Corridors', val: undefined },
-                        { label: '≤ 3km (Zone 1)', val: 3 },
-                        { label: '≤ 6km (Zone 2)', val: 6 },
-                      ].map((dist) => (
-                        <button
-                          key={dist.label}
-                          onClick={() => setSearchFilters((prev) => ({ ...prev, maxDistanceKm: dist.val }))}
-                          className={`px-2 py-0.5 rounded text-[11px] font-medium border cursor-pointer ${
-                            searchFilters.maxDistanceKm === dist.val
-                              ? 'bg-slate-900 text-white border-slate-900'
-                              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                          }`}
-                        >
-                          {dist.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Stock & Rebates Toggles */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 uppercase">Availability & Deals</label>
-                    <div className="flex flex-col space-y-1 pt-0.5">
-                      <label className="flex items-center space-x-1.5 cursor-pointer text-slate-800">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(searchFilters.inStockOnly)}
-                          onChange={(e) => setSearchFilters((prev) => ({ ...prev, inStockOnly: e.target.checked || undefined }))}
-                          className="rounded text-slate-900 focus:ring-slate-900"
-                        />
-                        <span className="font-medium">In Stock ({searchResult.facets.inStockCount})</span>
-                      </label>
-                      <label className="flex items-center space-x-1.5 cursor-pointer text-slate-800">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(searchFilters.promotionsOnly)}
-                          onChange={(e) => setSearchFilters((prev) => ({ ...prev, promotionsOnly: e.target.checked || undefined }))}
-                          className="rounded text-slate-900 focus:ring-slate-900"
-                        />
-                        <span className="font-medium">Rebates ({searchResult.facets.promotionsCount})</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  {/* Brand Filter */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-600 uppercase">Top Brands</label>
-                    <div className="flex items-center space-x-1 flex-wrap gap-1 max-h-16 overflow-y-auto">
-                      {searchResult.facets.brands.slice(0, 8).map((b) => {
-                        const isSelected = searchFilters.brands?.includes(b.value);
-                        return (
-                          <button
-                            key={b.value}
-                            onClick={() => {
-                              const current = searchFilters.brands || [];
-                              const next = isSelected ? current.filter((x) => x !== b.value) : [...current, b.value];
-                              setSearchFilters((prev) => ({ ...prev, brands: next.length > 0 ? next : undefined }));
-                            }}
-                            className={`px-1.5 py-0.2 rounded text-[10px] font-medium border cursor-pointer ${
-                              isSelected
-                                ? 'bg-blue-900 text-white border-blue-900'
-                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            {b.value} ({b.count})
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Recent Searches Pill Row (Last 5 Queries) */}
-            {recentSearches.length > 0 && (
-              <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5 text-xs">
-                <span className="text-slate-500 font-semibold shrink-0 flex items-center space-x-1 text-[11px]">
-                  <Clock className="w-3 h-3 text-slate-500" />
-                  <span>Recent Searches:</span>
-                </span>
-                {recentSearches.map((term) => {
-                  const isActive = searchQuery.toLowerCase() === term.toLowerCase();
-                  return (
-                    <div
-                      key={term}
-                      className={`inline-flex items-center rounded text-xs transition-colors border shadow-xs ${
-                        isActive
-                          ? 'bg-blue-50 text-blue-900 border-blue-300 font-semibold'
-                          : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      <button
-                        onClick={() => {
-                          setSearchQuery(term);
-                          addToRecentSearches(term);
-                          setIsAutocompleteOpen(false);
-                        }}
-                        className="px-2 py-0.5 text-xs cursor-pointer flex items-center space-x-1"
-                        title={`Re-run search for "${term}"`}
-                      >
-                        <span>{term}</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeFromRecentSearches(term);
-                        }}
-                        className="pr-1.5 pl-0.5 text-slate-400 hover:text-red-600 cursor-pointer"
-                        title="Remove from history"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  );
-                })}
-                <button
-                  onClick={clearRecentSearches}
-                  className="text-[10px] text-slate-400 hover:text-red-700 underline ml-1 cursor-pointer shrink-0"
-                >
-                  Clear all
-                </button>
-              </div>
-            )}
-
-            {/* Popular Chips */}
-            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 text-xs">
-              <span className="text-slate-400 font-medium shrink-0 flex items-center space-x-1 text-[11px]">
-                <Sparkles className="w-3 h-3 text-slate-500" />
-                <span>Quick Presets:</span>
-              </span>
+            {/* Popular Suggested Presets as Google-style pills */}
+            <div className="flex items-center justify-center flex-wrap gap-1.5 pt-1 text-xs">
+              <span className="text-slate-400 font-medium text-[11px] mr-1">Trending:</span>
               {SUGGESTED_CHIPS.map((chip) => (
                 <button
                   key={chip.query}
@@ -889,10 +787,10 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                     handleChipClick(chip.query);
                     setIsAutocompleteOpen(false);
                   }}
-                  className={`px-2 py-0.5 rounded font-medium transition-colors whitespace-nowrap border text-xs cursor-pointer ${
+                  className={`px-3 py-1 rounded-full font-medium text-xs cursor-pointer border ${
                     searchQuery.toLowerCase() === chip.query.toLowerCase()
-                      ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
                   }`}
                 >
                   {chip.label}
@@ -901,109 +799,45 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
             </div>
 
             {/* Category Filter Buttons */}
-            <div className="flex items-center space-x-1 overflow-x-auto pt-2 border-t border-slate-100 text-xs">
-              <span className="text-slate-400 font-medium shrink-0 text-[11px] mr-1">Category:</span>
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
-                    selectedCategory === cat
-                      ? 'bg-slate-100 text-slate-900 font-semibold border border-slate-300'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-
-            {/* Query Telemetry, Inverted Index & Enrichment Strip */}
-            {searchResult && (
-              <div className="space-y-2 pt-1 border-t border-slate-100">
-                <div className="flex flex-wrap items-center justify-between text-xs text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded gap-2">
-                  <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                    <span className="font-semibold text-slate-900">
-                      {displayedResults.length} wholesale match(es)
-                    </span>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-emerald-700 font-mono text-[11px] font-semibold">
-                      FastAPI Latency: {searchResult.executionTimeMs}ms
-                    </span>
-                    {searchResult.indexMetrics && (
-                      <>
-                        <span className="text-slate-300">•</span>
-                        <span className="text-slate-700 text-[10px] font-mono bg-white px-1.5 py-0.2 rounded border border-slate-200">
-                          BM25: {searchResult.indexMetrics.postingsEvaluated} postings ({searchResult.indexMetrics.indexLookupTimeMs}ms)
-                        </span>
-                        {searchResult.indexMetrics.treePrunedCount !== undefined && searchResult.indexMetrics.treePrunedCount > 0 && (
-                          <span className="text-indigo-800 text-[10px] font-mono bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200" title="Topological Bitset Pruning: irrelevant SKUs skipped before BM25">
-                            ⚡ Node Bitset Pruned: {searchResult.indexMetrics.treePrunedCount} SKUs
-                          </span>
-                        )}
-                        {searchResult.indexMetrics.aabbGeoEvaluated !== undefined && searchResult.indexMetrics.aabbGeoEvaluated > 0 && (
-                          <span className="text-teal-800 text-[10px] font-mono bg-teal-50 px-1.5 py-0.2 rounded border border-teal-200" title="AABB Bounding Box fast coordinate filter prior to Haversine">
-                            📐 AABB Geo Filtered: {searchResult.indexMetrics.aabbGeoEvaluated} depot(s)
-                          </span>
-                        )}
-                        {searchResult.indexMetrics.snapshotCacheHit && (
-                          <span className="text-emerald-800 text-[10px] font-mono bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200" title="Instant snapshot retrieved from local supply node cache">
-                            💾 Snapshot Hit
-                          </span>
-                        )}
-                      </>
+            <div className="flex items-center space-x-1.5 overflow-x-auto pt-3 border-t border-slate-200/80 text-xs justify-center">
+              <span className="text-slate-400 font-medium shrink-0 text-[11px] mr-1">Categories:</span>
+              {CATEGORIES.map((cat) => {
+                const isSelected = selectedCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => {
+                      setSelectedCategory((prev) => (prev === cat ? 'All' : cat));
+                    }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    {isSelected && cat !== 'All' && (
+                      <span className="ml-1.5 opacity-80 text-[10px]">✕</span>
                     )}
-                    <span className="text-slate-300">•</span>
-                    <span className="text-blue-700 font-bold text-[10px] px-1.5 py-0.2 bg-blue-50 border border-blue-200 rounded">
-                      Intent: {searchResult.detectedIntent}
-                    </span>
-                  </div>
-
-                  {/* Fuzzy / Did you mean suggestion */}
-                  {searchResult.spellCorrections.length > 0 && (
-                    <div className="text-[11px] text-amber-800 flex items-center space-x-1">
-                      <span>Showing results for</span>
-                      <button
-                        onClick={() => setSearchQuery(searchResult.spellCorrections[0].correctedTerm)}
-                        className="font-bold text-slate-900 underline hover:text-blue-700 cursor-pointer"
-                      >
-                        {searchResult.spellCorrections[0].correctedTerm}
-                      </button>
-                      <span className="line-through text-slate-400">({searchResult.spellCorrections[0].originalTerm})</span>
-                    </div>
-                  )}
-
-                  {/* Sheng Terminology */}
-                  {searchResult.detectedDialectTerms.length > 0 && (
-                    <div className="text-[11px] text-purple-700">
-                      <span className="font-bold">Sheng:</span> "{searchResult.detectedDialectTerms[0].rawTerm}" = {searchResult.detectedDialectTerms[0].englishTranslation}
-                    </div>
-                  )}
-
-                  {/* Synonyms Expanded */}
-                  {searchResult.synonymsApplied && searchResult.synonymsApplied.length > 0 && (
-                    <div className="text-[11px] text-emerald-700">
-                      <span className="font-bold">Synonyms:</span> {searchResult.synonymsApplied[0].original} → {searchResult.synonymsApplied[0].expansions.slice(0, 2).join(', ')}
-                    </div>
-                  )}
-
-                  {searchResult.extractedPackSize && (
-                    <div className="text-[11px] text-emerald-700 font-semibold">
-                      Pack: {searchResult.extractedPackSize.raw}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+                  </button>
+                );
+              })}
+              {selectedCategory !== 'All' && (
+                <button
+                  onClick={() => setSelectedCategory('All')}
+                  className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold underline shrink-0 cursor-pointer ml-1.5"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Section 45: Multi-Signal Recommendation Tray (Search-First Safeguarded) */}
+          {/* Recommendation Tray for Quick Restock */}
           <RetailerRecommendationTray
             recommendationResult={recommendationResult}
             currentShop={currentShop}
             searchQuery={searchQuery}
-            onSelectProductForInspect={(item) => setSelectedItemForInspect(item)}
-            onOpenModelInspector={() => setIsModelInspectorOpen(true)}
             onAddToCart={addToCart}
             cartQuantities={cartQuantities}
           />
@@ -1021,74 +855,106 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
 
             {/* Zero-Result Recovery View */}
             {displayedResults.length === 0 ? (
-              <div className="bg-white border border-slate-200 rounded-md p-6 space-y-4 shadow-2xs">
-                <div className="flex items-start space-x-3">
-                  <div className="p-2 bg-amber-100 text-amber-800 rounded shrink-0">
-                    <AlertCircle className="w-5 h-5" />
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-slate-900">
-                      No Direct Wholesale Match for "{searchQuery || selectedCategory}"
-                    </h4>
-                    <p className="text-xs text-slate-600">
-                      Requirement #11 (Zero-Result Handling): WAYNO prevents stockouts by connecting you with nearby wholesalers or finding in-stock alternatives.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Did You Mean fallback if available */}
-                {searchResult?.fallback?.didYouMean && (
-                  <div className="text-xs text-slate-700 bg-blue-50 border border-blue-200 rounded p-2.5">
-                    Did you mean:{' '}
-                    <button
-                      onClick={() => setSearchQuery(searchResult?.fallback?.didYouMean || '')}
-                      className="font-bold text-blue-700 underline hover:text-blue-900 cursor-pointer"
-                    >
-                      "{searchResult.fallback.didYouMean}"
-                    </button>?
-                  </div>
-                )}
-
-                {/* Dispatch Demand Alert */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                  <div>
-                    <div className="font-semibold text-slate-900">Request Wayno Network to Stock this SKU</div>
-                    <div className="text-[11px] text-slate-500">Sends instant restock telemetry across all in-range regional fulfillment depots.</div>
-                  </div>
-                  <button
-                    onClick={() => setDemandAlertSent(true)}
-                    disabled={demandAlertSent}
-                    className={`px-3 py-1.5 rounded font-semibold transition-colors cursor-pointer ${
-                      demandAlertSent ? 'bg-emerald-600 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white'
-                    }`}
-                  >
-                    {demandAlertSent ? 'Restock Signal Sent!' : 'Request SKU Restock'}
-                  </button>
-                </div>
-
-                {/* Closest In-Stock Substitutes */}
-                {searchResult?.fallback?.closestSubstitutes && (
-                  <div className="space-y-2 pt-2">
-                    <span className="text-xs font-bold text-slate-800">
-                      Popular FMCG Staples In-Stock Now:
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                      {searchResult.fallback.closestSubstitutes.map((sub) => (
-                        <div
-                          key={sub.product.id}
-                          onClick={() => setSearchQuery(sub.product.name)}
-                          className="p-2.5 border border-slate-200 rounded hover:border-slate-300 cursor-pointer transition-colors bg-white"
-                        >
-                          <div className="font-bold text-slate-900 truncate">{sub.product.name}</div>
-                          <div className="text-[11px] text-emerald-700 font-semibold">
-                            KES {sub.bestSupplierProduct.price} • {sub.product.packSize}
-                          </div>
-                        </div>
-                      ))}
+              selectedCategory !== 'All' && (searchResult?.results.length ?? 0) > 0 ? (
+                <div className="bg-white border border-blue-200 rounded-md p-5 space-y-3 shadow-2xs">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 bg-blue-50 text-blue-700 rounded shrink-0">
+                      <Filter className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-slate-900">
+                        {searchResult?.results.length} wholesale {searchResult?.results.length === 1 ? 'item found' : 'items found'} in another category
+                      </h4>
+                      <p className="text-xs text-slate-600">
+                        Category filter <span className="font-semibold text-blue-700">"{selectedCategory}"</span> is active, but your search for <span className="font-semibold text-slate-900">"{searchQuery}"</span> matches products in a different department.
+                      </p>
                     </div>
                   </div>
-                )}
-              </div>
+                  <div className="pt-1 flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedCategory('All')}
+                      className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-md cursor-pointer transition-colors shadow-xs"
+                    >
+                      Show All {searchResult?.results.length} Matches (Uncouple Category)
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white border border-slate-200 rounded-md p-6 space-y-4 shadow-2xs">
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 bg-amber-100 text-amber-800 rounded shrink-0">
+                      <AlertCircle className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-slate-900">
+                        No Direct Wholesale Match for "{searchQuery || selectedCategory}"
+                      </h4>
+                      <p className="text-xs text-slate-600">
+                        We couldn't find an exact match right now. Check our in-stock substitutes below or request the network to stock this SKU.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Did You Mean fallback if available */}
+                  {searchResult?.fallback?.didYouMean && (
+                    <div className="text-xs text-slate-700 bg-blue-50 border border-blue-200 rounded p-2.5">
+                      Did you mean:{' '}
+                      <button
+                        onClick={() => {
+                          setSelectedCategory('All');
+                          setSearchQuery(searchResult?.fallback?.didYouMean || '');
+                        }}
+                        className="font-bold text-blue-700 underline hover:text-blue-900 cursor-pointer"
+                      >
+                        "{searchResult.fallback.didYouMean}"
+                      </button>?
+                    </div>
+                  )}
+
+                  {/* Dispatch Demand Alert */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                    <div>
+                      <div className="font-semibold text-slate-900">Request Wayno Network to Stock this SKU</div>
+                      <div className="text-[11px] text-slate-500">Sends instant restock request across all in-range regional fulfillment depots.</div>
+                    </div>
+                    <button
+                      onClick={() => setDemandAlertSent(true)}
+                      disabled={demandAlertSent}
+                      className={`px-3 py-1.5 rounded font-semibold transition-colors cursor-pointer ${
+                        demandAlertSent ? 'bg-emerald-600 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white'
+                      }`}
+                    >
+                      {demandAlertSent ? 'Restock Signal Sent!' : 'Request SKU Restock'}
+                    </button>
+                  </div>
+
+                  {/* Closest In-Stock Substitutes */}
+                  {searchResult?.fallback?.closestSubstitutes && (
+                    <div className="space-y-2 pt-2">
+                      <span className="text-xs font-bold text-slate-800">
+                        Popular FMCG Staples In-Stock Now:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        {searchResult.fallback.closestSubstitutes.map((sub) => (
+                          <div
+                            key={sub.product.id}
+                            onClick={() => {
+                              setSelectedCategory('All');
+                              setSearchQuery(sub.product.name);
+                            }}
+                            className="p-2.5 border border-slate-200 rounded hover:border-slate-300 cursor-pointer transition-colors bg-white"
+                          >
+                            <div className="font-bold text-slate-900 truncate">{sub.product.name}</div>
+                            <div className="text-[11px] text-emerald-700 font-semibold">
+                              KES {sub.bestSupplierProduct.price} • {sub.product.packSize}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {displayedResults.map((item) => {
@@ -1205,14 +1071,9 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                               <span>National Grid</span>
                             </span>
                           )}
-                          {relevanceScore && (
-                            <span className="bg-emerald-50 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded border border-emerald-200">
-                              Match: {relevanceScore}/100
-                            </span>
-                          )}
                           {matchedPackSize && (
                             <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-1.5 py-0.2 rounded border border-blue-200">
-                              Exact Size: {matchedPackSize.raw}
+                              {matchedPackSize.raw}
                             </span>
                           )}
                           {matchedAliases.length > 0 && matchedAliases.slice(0, 2).map((al) => (
@@ -1585,15 +1446,6 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                     <span className="font-mono text-slate-800">{currentShop.longitude}</span>
                   </div>
                 </div>
-                <div className="bg-emerald-50 border border-emerald-200 rounded p-3 text-xs space-y-1.5 text-emerald-950">
-                  <div className="flex items-center space-x-1.5 font-bold text-emerald-900">
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span>Zero-Touch Autonomous Sourcing Model</span>
-                  </div>
-                  <p className="text-[11px] text-emerald-800 leading-relaxed">
-                    At no point do you need to browse, compare, or choose between wholesalers. Wayno's geofencing algorithms automatically query all in-range wholesale depots, secure the lowest price, calculate optimal vehicle payload, and dispatch riders directly to your duka. You are billed a single unified amount and receive your goods at your door.
-                  </p>
-                </div>
               </div>
             </div>
 
@@ -1622,28 +1474,6 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                   </div>
                 </div>
               </div>
-
-              <div className="bg-white border border-slate-200 rounded-md p-4 space-y-2 text-xs">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Background Supply Depots
-                  </h3>
-                  <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded font-mono">
-                    Auto-Routed
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-500">
-                  Depots servicing your 20 km zone in the background. Wayno routes orders autonomously without requiring merchant action:
-                </p>
-                <div className="space-y-1.5">
-                  {WHOLESALERS.map((w) => (
-                    <div key={w.id} className="p-2 rounded bg-slate-50 border border-slate-200">
-                      <span className="font-semibold text-slate-900 block text-[11px]">{w.name}</span>
-                      <span className="text-[10px] text-slate-500">{w.address} · Avg Dispatch {w.avgPrepTimeMinutes}m</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -1651,7 +1481,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
 
       {/* Floating Bottom Cart Bar when items in cart - Outlook Clean Bar */}
       {cart.length > 0 && (
-        <div className="fixed bottom-4 left-4 right-4 max-w-xl mx-auto z-30 animate-in fade-in slide-in-from-bottom duration-200">
+        <div className="fixed bottom-4 left-4 right-4 max-w-xl mx-auto z-30">
           <div className="bg-white text-slate-900 rounded-md p-3 sm:p-3.5 shadow-xl flex items-center justify-between border border-slate-300">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0 font-mono">
@@ -1679,19 +1509,6 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
             </button>
           </div>
         </div>
-      )}
-
-      {/* Recommendation Model Inspector Modal (Section 45) */}
-      {recommendationResult && (
-        <RecommendationModelInspector
-          isOpen={isModelInspectorOpen}
-          onClose={() => setIsModelInspectorOpen(false)}
-          result={recommendationResult}
-          currentShop={currentShop}
-          onSimulateTime={(hour) => setSimulatedHour(hour)}
-          onUpdateWeights={(w) => setRecommendationWeights((prev) => ({ ...prev, ...w }))}
-          onAddToCart={addToCart}
-        />
       )}
     </div>
   );

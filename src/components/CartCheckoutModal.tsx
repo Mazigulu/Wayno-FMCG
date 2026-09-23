@@ -134,11 +134,15 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     const deliveryOtp = Math.floor(1000 + Math.random() * 9000).toString();
     const orderId = `WN-${Date.now().toString().slice(-6)}`;
 
-    // PRODUCTION HARDENING: Lock virtual inventory with safety buffer check
+    // PRODUCTION HARDENING: Lock virtual inventory with safety buffer check across fulfillment depots
     const reserveAttempt = VirtualStockReservationManager.reserveStock(
       orderId,
       primaryWholesalerLocationId,
-      cart.map((c) => ({ productId: c.product.id, quantity: c.quantity }))
+      cart.map((c) => ({
+        productId: c.product.id,
+        quantity: c.quantity,
+        wholesalerLocationId: c.supplierProduct.wholesalerLocationId,
+      }))
     );
 
     if (!reserveAttempt.success) {

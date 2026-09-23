@@ -6,18 +6,22 @@ import {
   Scale, 
   ShieldCheck, 
   Zap, 
-  Server, 
   Database, 
   Radio, 
   TrendingUp,
   Cpu,
-  Layers,
   BarChart3,
   Tag,
   FolderTree,
   Sparkles,
   Package,
-  Network
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Boxes,
+  Menu,
+  X,
+  ChevronDown
 } from 'lucide-react';
 import { Order, TelemetryEvent, OrderState, PaymentRecord, Payment, PaymentTransaction, Rider } from '../types/wayno';
 import { OperationsConsole } from './OperationsConsole';
@@ -34,7 +38,20 @@ import { RecommendationEngineConsole } from './RecommendationEngineConsole';
 import { ProductsMasterCatalog } from './operations/ProductsMasterCatalog';
 import { SupplyNodeTreeVisualizer } from './hierarchical/SupplyNodeTreeVisualizer';
 
-export type AdminSubTab = 'operations' | 'products' | 'geofence' | 'demand' | 'intelligence' | 'promotions' | 'benchmark' | 'rules' | 'nfr' | 'architecture' | 'repository' | 'database' | 'recommendations';
+export type AdminSubTab = 
+  | 'operations' 
+  | 'products' 
+  | 'geofence' 
+  | 'demand' 
+  | 'intelligence' 
+  | 'promotions' 
+  | 'benchmark' 
+  | 'rules' 
+  | 'nfr' 
+  | 'architecture' 
+  | 'repository' 
+  | 'database' 
+  | 'recommendations';
 
 interface AdminOperationsHubProps {
   orders: Order[];
@@ -46,6 +63,21 @@ interface AdminOperationsHubProps {
   onReassignRider?: (orderId: string, newRider: Rider, reason: string) => void;
   onInitiateRefund?: (orderId: string, reason: string) => void;
   defaultSubTab?: AdminSubTab;
+}
+
+interface NavItem {
+  id: AdminSubTab;
+  label: string;
+  sublabel: string;
+  icon: React.ElementType;
+  badge?: string;
+  badgeColor?: string;
+}
+
+interface NavSection {
+  title: string;
+  badge?: string;
+  items: NavItem[];
 }
 
 export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
@@ -61,6 +93,8 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
 }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
 
   // Determine active sub-tab from current route or props
   const resolveTabFromPath = (): AdminSubTab => {
@@ -113,6 +147,7 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
 
   const handleTabChange = (tab: AdminSubTab) => {
     setActiveTab(tab);
+    setMobileDrawerOpen(false); // Close drawer on mobile selection
     navigate(`/admin/${tab}`);
   };
 
@@ -122,369 +157,420 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
 
   const totalGMV = orders.reduce((sum, o) => sum + o.totalAmount, 0) + 184500;
 
+  // Segmented Navigation Structure
+  const navigationSections: NavSection[] = [
+    {
+      title: 'Core Operations & Supply',
+      badge: 'Live',
+      items: [
+        {
+          id: 'operations',
+          label: 'Operations & Telemetry',
+          sublabel: 'Desks, Orders & Dispatch',
+          icon: Activity,
+          badge: `${activeOrdersCount} Active`,
+          badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        },
+        {
+          id: 'products',
+          label: 'Product Master Catalog',
+          sublabel: 'Section 13 FMCG Taxonomy',
+          icon: Package,
+          badge: 'Catalog',
+          badgeColor: 'bg-blue-50 text-blue-800 border-blue-200',
+        },
+        {
+          id: 'geofence',
+          label: 'Supply Node Hierarchy',
+          sublabel: '20 km Leaf Nodes & Tree',
+          icon: Network,
+          badge: '20km Grid',
+          badgeColor: 'bg-teal-50 text-teal-800 border-teal-200',
+        },
+      ],
+    },
+    {
+      title: 'Market & Growth Intelligence',
+      badge: 'AI Powered',
+      items: [
+        {
+          id: 'demand',
+          label: 'Demand Analytics',
+          sublabel: 'Predictive Stocking & Forecasts',
+          icon: BarChart3,
+          badge: 'Forecast',
+          badgeColor: 'bg-rose-50 text-rose-800 border-rose-200',
+        },
+        {
+          id: 'intelligence',
+          label: 'Market Intelligence',
+          sublabel: '5-Stage Aggregation Pipeline',
+          icon: Cpu,
+          badge: '5 Stages',
+          badgeColor: 'bg-indigo-50 text-indigo-800 border-indigo-200',
+        },
+        {
+          id: 'promotions',
+          label: 'Promotional Placements',
+          sublabel: 'Sponsored Ads & Banners',
+          icon: Tag,
+          badge: 'Ads',
+          badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+        },
+        {
+          id: 'recommendations',
+          label: 'Recommendation Engine',
+          sublabel: 'Section 45 5-Signal Scoring',
+          icon: Sparkles,
+          badge: 'Sec 45',
+          badgeColor: 'bg-amber-100 text-amber-900 border-amber-300',
+        },
+      ],
+    },
+    {
+      title: 'Search, Governance & SLAs',
+      items: [
+        {
+          id: 'benchmark',
+          label: 'Search & SLA Benchmark',
+          sublabel: '16 Search Specs & Live Logs',
+          icon: Search,
+          badge: '<300ms',
+          badgeColor: 'bg-cyan-50 text-cyan-800 border-cyan-200',
+        },
+        {
+          id: 'rules',
+          label: 'Business Rules Engine',
+          sublabel: '14 Core Commerce Guardrails',
+          icon: Scale,
+          badge: '14 Rules',
+          badgeColor: 'bg-slate-100 text-slate-800 border-slate-200',
+        },
+        {
+          id: 'nfr',
+          label: 'NFR Specifications',
+          sublabel: '14 Hardened SLAs & Audits',
+          icon: ShieldCheck,
+          badge: '14 NFRs',
+          badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        },
+      ],
+    },
+    {
+      title: 'Infrastructure & Engineering',
+      badge: 'PostGIS / Code',
+      items: [
+        {
+          id: 'database',
+          label: 'Database & PostGIS',
+          sublabel: 'Spatial Indexing & Schema',
+          icon: Database,
+          badge: 'PostGIS',
+          badgeColor: 'bg-blue-50 text-blue-800 border-blue-200',
+        },
+        {
+          id: 'architecture',
+          label: 'Architecture & Flows',
+          sublabel: 'System Blueprint & Workspaces',
+          icon: Zap,
+          badge: 'Blueprint',
+          badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
+        },
+        {
+          id: 'repository',
+          label: 'Monorepo Structure',
+          sublabel: 'wayno/ Project Organization',
+          icon: FolderTree,
+          badge: 'wayno/',
+          badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        },
+      ],
+    },
+  ];
+
+  // Flat items map for quick title lookups
+  const allItems: NavItem[] = navigationSections.flatMap((s) => s.items);
+  const activeItem = allItems.find((i) => i.id === activeTab) || allItems[0];
+  const ActiveIcon = activeItem.icon;
+
+  const renderNavList = (isMobile = false) => (
+    <div className="p-2 space-y-3">
+      {navigationSections.map((section, sIdx) => (
+        <div key={sIdx} className="space-y-1">
+          {(!sidebarCollapsed || isMobile) && (
+            <div className="flex items-center justify-between px-2 pt-1 pb-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                {section.title}
+              </span>
+              {section.badge && (
+                <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                  {section.badge}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-0.5">
+            {section.items.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  id={`admin-tab-${item.id}`}
+                  onClick={() => handleTabChange(item.id)}
+                  title={sidebarCollapsed && !isMobile ? `${item.label} (${item.sublabel})` : undefined}
+                  className={`w-full flex items-center text-left rounded-md transition-all cursor-pointer ${
+                    sidebarCollapsed && !isMobile
+                      ? 'justify-center p-2.5' 
+                      : 'px-2.5 py-2 space-x-2.5'
+                  } ${
+                    isActive
+                      ? 'bg-slate-900 text-white shadow-xs font-semibold'
+                      : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                  }`}
+                >
+                  <Icon className={`w-4 h-4 shrink-0 ${
+                    isActive ? 'text-emerald-400' : 'text-slate-500'
+                  }`} />
+
+                  {(!sidebarCollapsed || isMobile) && (
+                    <div className="flex-1 min-w-0 flex items-center justify-between gap-1.5">
+                      <div className="truncate">
+                        <div className="text-xs truncate leading-tight">
+                          {item.label}
+                        </div>
+                        <div className={`text-[10px] truncate leading-tight ${
+                          isActive ? 'text-slate-300' : 'text-slate-400'
+                        }`}>
+                          {item.sublabel}
+                        </div>
+                      </div>
+
+                      {item.badge && (
+                        <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded shrink-0 border ${
+                          isActive 
+                            ? 'bg-white/20 text-white border-white/30' 
+                            : (item.badgeColor || 'bg-slate-100 text-slate-700 border-slate-200')
+                        }`}>
+                          {item.badge}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="space-y-4 pb-20">
-      {/* Consolidated Admin Operations Command Banner & Sub-Navigation */}
-      <div className="bg-white border border-slate-200 rounded-md p-3.5 sm:p-4 text-slate-900 shadow-2xs">
-        {/* Title and Telemetry Status Bar */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-          <div className="flex items-center space-x-3">
+    <div className="space-y-3 sm:space-y-4 pb-20">
+      {/* Top Telemetry & Status Bar */}
+      <div className="bg-white border border-slate-200 rounded-md p-3 sm:p-4 text-slate-900 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
+          <div className="flex items-center space-x-2.5 sm:space-x-3">
             <div className="w-8 h-8 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h1 className="text-sm font-bold text-slate-900">
+            <div className="min-w-0">
+              <div className="flex items-center space-x-1.5 sm:space-x-2 flex-wrap">
+                <h1 className="text-xs sm:text-sm font-bold text-slate-900 truncate">
                   Admin Operations Command Center
                 </h1>
                 <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-800 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center space-x-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>12 Enterprise Modules</span>
+                  <span>13 Modules</span>
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 truncate max-w-xs sm:max-w-xl">
-                Unified administration: Live Dispatch & Telemetry · Master Catalog · Demand Analytics · Market Intelligence · Promotions · Search & SLA Benchmark · Recommendations · Business Rules · NFRs · Architecture · Database · Monorepo
+              <p className="text-[10px] sm:text-[11px] text-slate-500 truncate max-w-[260px] sm:max-w-xl">
+                Unified administration: Live Dispatch · Master Catalog · Demand Analytics · Market Intelligence · Benchmark · NFRs · PostGIS
               </p>
             </div>
           </div>
 
           {/* Quick Metrics Badges */}
-          <div className="flex items-center space-x-2 text-xs">
-            <span className="font-mono bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-slate-700 font-medium flex items-center space-x-1.5">
-              <Radio className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="flex items-center space-x-1.5 sm:space-x-2 text-xs overflow-x-auto pb-0.5 no-scrollbar">
+            <span className="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 sm:py-1 rounded text-slate-700 font-medium flex items-center space-x-1 shrink-0 text-[11px] sm:text-xs">
+              <Radio className="w-3 h-3 text-emerald-600" />
               <span>Pipeline: <strong className="text-slate-900">{activeOrdersCount}</strong></span>
             </span>
-            <span className="hidden sm:flex font-mono bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-slate-700 font-medium items-center space-x-1.5">
-              <TrendingUp className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="font-mono bg-slate-50 border border-slate-200 px-2 py-0.5 sm:py-1 rounded text-slate-700 font-medium flex items-center space-x-1 shrink-0 text-[11px] sm:text-xs">
+              <TrendingUp className="w-3 h-3 text-indigo-600" />
               <span>GMV: <strong className="text-slate-900 font-mono">KES {totalGMV.toLocaleString()}</strong></span>
             </span>
-            <span className="hidden md:flex font-mono bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-slate-700 font-medium items-center space-x-1.5">
-              <Server className="w-3.5 h-3.5 text-cyan-600" />
-              <span>SLA: <strong className="text-slate-900 font-mono">99.98%</strong></span>
-            </span>
-            <span className="hidden lg:flex font-mono bg-slate-50 border border-slate-200 px-2.5 py-1 rounded text-slate-700 font-medium items-center space-x-1.5">
-              <Database className="w-3.5 h-3.5 text-amber-600" />
-              <span>P95: <strong className="text-slate-900 font-mono">168ms</strong></span>
-            </span>
           </div>
-        </div>
-
-        {/* The 8 Merged Modules Tabs */}
-        <div className="flex items-center space-x-1 pt-2.5 overflow-x-auto text-xs">
-          {/* 1. Operations & Pipeline */}
-          <button
-            id="admin-tab-operations"
-            onClick={() => handleTabChange('operations')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'operations'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Operations & Telemetry</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'operations' ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-800'
-            }`}>
-              {activeOrdersCount} Active
-            </span>
-          </button>
-
-          {/* 1B. Product Management (Section 13) */}
-          <button
-            id="admin-tab-products"
-            onClick={() => handleTabChange('products')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'products'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5 text-blue-400" />
-            <span>Product Management (Sec 13)</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'products' ? 'bg-white text-slate-900' : 'bg-blue-100 text-blue-800'
-            }`}>
-              Master Catalog
-            </span>
-          </button>
-
-          {/* 1C. Geographic Supply Nodes & Geofencing */}
-          <button
-            id="admin-tab-geofence"
-            onClick={() => handleTabChange('geofence')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'geofence'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Network className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Supply Node Tree</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'geofence' ? 'bg-white text-slate-900' : 'bg-emerald-100 text-emerald-800'
-            }`}>
-              20 km Nodes
-            </span>
-          </button>
-
-          {/* 2. Demand Analytics & Forecasting */}
-          <button
-            id="admin-tab-demand"
-            onClick={() => handleTabChange('demand')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'demand'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5 text-rose-400" />
-            <span>Demand Analytics</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'demand' ? 'bg-white text-slate-900' : 'bg-rose-100 text-rose-800'
-            }`}>
-              AI Forecast
-            </span>
-          </button>
-
-          {/* 3. Aggregated Market Intelligence Pipeline */}
-          <button
-            id="admin-tab-intelligence"
-            onClick={() => handleTabChange('intelligence')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'intelligence'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Market Intelligence</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'intelligence' ? 'bg-white text-slate-900' : 'bg-indigo-100 text-indigo-800'
-            }`}>
-              5 Stages
-            </span>
-          </button>
-
-          {/* 4. Promotional Placements & Sponsored Ads */}
-          <button
-            id="admin-tab-promotions"
-            onClick={() => handleTabChange('promotions')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'promotions'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Tag className="w-3.5 h-3.5 text-amber-400" />
-            <span>Promotional Placements</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'promotions' ? 'bg-white text-slate-900' : 'bg-amber-100 text-amber-800'
-            }`}>
-              Live Ads
-            </span>
-          </button>
-
-          {/* 4. Search Benchmark Core */}
-          <button
-            id="admin-tab-benchmark"
-            onClick={() => handleTabChange('benchmark')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'benchmark'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Search className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Search & SLA Benchmark</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'benchmark' ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-800'
-            }`}>
-              16 Specs + Logs
-            </span>
-          </button>
-
-          {/* 5. Business Rules */}
-          <button
-            id="admin-tab-rules"
-            onClick={() => handleTabChange('rules')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'rules'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Scale className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Business Rules</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'rules' ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-800'
-            }`}>
-              14 Rules
-            </span>
-          </button>
-
-          {/* 4. NFR Specs */}
-          <button
-            id="admin-tab-nfr"
-            onClick={() => handleTabChange('nfr')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'nfr'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>NFR Specifications</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'nfr' ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-800'
-            }`}>
-              14 NFRs
-            </span>
-          </button>
-
-          {/* 5. Architecture & Flows */}
-          <button
-            id="admin-tab-architecture"
-            onClick={() => handleTabChange('architecture')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'architecture'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span>Architecture & Flows</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'architecture' ? 'bg-white text-slate-900' : 'bg-slate-200 text-slate-800'
-            }`}>
-              Blueprint
-            </span>
-          </button>
-
-          {/* 6. Repository Monorepo Structure */}
-          <button
-            id="admin-tab-repository"
-            onClick={() => handleTabChange('repository')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'repository'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <FolderTree className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Repository Monorepo</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'repository' ? 'bg-white text-slate-900' : 'bg-emerald-100 text-emerald-800'
-            }`}>
-              wayno/
-            </span>
-          </button>
-
-          {/* 7. Database & PostGIS Indexing */}
-          <button
-            id="admin-tab-database"
-            onClick={() => handleTabChange('database')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'database'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Database className="w-3.5 h-3.5 text-blue-400" />
-            <span>Database & Indexes</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'database' ? 'bg-white text-slate-900' : 'bg-blue-100 text-blue-800'
-            }`}>
-              PostGIS
-            </span>
-          </button>
-
-          {/* 8. 5-Signal Recommendation Engine (Section 45) */}
-          <button
-            id="admin-tab-recommendations"
-            onClick={() => handleTabChange('recommendations')}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap cursor-pointer ${
-              activeTab === 'recommendations'
-                ? 'bg-slate-900 text-white font-semibold shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Recommendation Engine</span>
-            <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-              activeTab === 'recommendations' ? 'bg-amber-400 text-slate-950' : 'bg-amber-100 text-amber-900'
-            }`}>
-              Sec 45
-            </span>
-          </button>
         </div>
       </div>
 
-      {/* Render Active Merged Module */}
-      <div>
-        {activeTab === 'operations' && (
-           <OperationsConsole
-             orders={orders}
-             events={events}
-             payments={payments}
-             paymentTransactions={paymentTransactions}
-             paymentRecords={paymentRecords}
-             onManualOverrideStatus={onManualOverrideStatus}
-             onReassignRider={onReassignRider}
-             onInitiateRefund={onInitiateRefund}
-             initialPage={resolveOperationsPage()}
-           />
-        )}
-
-        {activeTab === 'products' && (
-          <ProductsMasterCatalog />
-        )}
-
-        {activeTab === 'geofence' && (
-          <div className="space-y-4">
-            <SupplyNodeTreeVisualizer orders={orders} />
+      {/* Mobile Sticky Module Selector & Drawer Toggle Button */}
+      <div className="lg:hidden flex items-center justify-between bg-white border border-slate-200 rounded-md p-2.5 shadow-2xs">
+        <button
+          onClick={() => setMobileDrawerOpen(true)}
+          className="flex items-center space-x-2.5 text-left flex-1 min-w-0 cursor-pointer"
+        >
+          <div className="w-7 h-7 rounded bg-slate-900 text-white flex items-center justify-center shrink-0">
+            <ActiveIcon className="w-3.5 h-3.5 text-emerald-400" />
           </div>
-        )}
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              Current Module
+            </div>
+            <div className="text-xs font-bold text-slate-900 truncate flex items-center space-x-1.5">
+              <span>{activeItem.label}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </div>
+          </div>
+        </button>
 
-        {activeTab === 'demand' && (
-          <DemandAnalyticsConsole orders={orders} />
-        )}
+        <button
+          onClick={() => setMobileDrawerOpen(true)}
+          className="px-2.5 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-medium flex items-center space-x-1 cursor-pointer shrink-0 border border-slate-200"
+        >
+          <Menu className="w-3.5 h-3.5" />
+          <span>Menu</span>
+        </button>
+      </div>
 
-        {activeTab === 'intelligence' && (
-          <MarketIntelligenceConsole />
-        )}
+      {/* Mobile Drawer Backdrop & Modal Side Sheet */}
+      {mobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setMobileDrawerOpen(false)}
+          />
 
-        {activeTab === 'promotions' && (
-          <PromotionsManagerConsole />
-        )}
+          {/* Drawer Menu Panel */}
+          <div className="relative w-4/5 max-w-xs bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between p-3.5 border-b border-slate-200 bg-slate-50">
+              <div className="flex items-center space-x-2">
+                <Boxes className="w-4 h-4 text-slate-700" />
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Admin Modules
+                </span>
+              </div>
+              <button
+                onClick={() => setMobileDrawerOpen(false)}
+                className="p-1 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-200 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-        {activeTab === 'benchmark' && (
-          <SearchBenchmark />
-        )}
+            <div className="flex-1 overflow-y-auto">
+              {renderNavList(true)}
+            </div>
 
-        {activeTab === 'rules' && (
-          <BusinessRulesConsole />
-        )}
+            <div className="p-3 border-t border-slate-200 bg-slate-50 text-[11px] text-slate-500 flex items-center justify-between">
+              <span>13 Modules Active</span>
+              <span className="font-mono text-emerald-700 font-semibold">WAYNO V1</span>
+            </div>
+          </div>
+        </div>
+      )}
 
-        {activeTab === 'nfr' && (
-          <NFRConsole />
-        )}
+      {/* Main Two-Column Layout: Desktop Side Menu + Content Area */}
+      <div className="flex flex-col lg:flex-row gap-4 items-start">
+        {/* Desktop Sidebar Navigation (Hidden on mobile, drawer is used) */}
+        <aside 
+          className={`hidden lg:block shrink-0 bg-white border border-slate-200 rounded-md transition-all duration-200 ${
+            sidebarCollapsed ? 'w-16' : 'w-72'
+          }`}
+        >
+          {/* Sidebar Header & Toggle */}
+          <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50/60 rounded-t-md">
+            <div className={`flex items-center space-x-2 ${sidebarCollapsed ? 'hidden' : ''}`}>
+              <Boxes className="w-4 h-4 text-slate-600" />
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Admin Console
+              </span>
+            </div>
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors ml-auto cursor-pointer"
+              title={sidebarCollapsed ? 'Expand Side Menu' : 'Collapse Side Menu'}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="w-4 h-4" />
+              ) : (
+                <PanelLeftClose className="w-4 h-4" />
+              )}
+            </button>
+          </div>
 
-        {activeTab === 'architecture' && (
-          <ArchitectureWorkspace />
-        )}
+          {renderNavList(false)}
+        </aside>
 
-        {activeTab === 'repository' && (
-          <RepositoryStructureExplorer />
-        )}
+        {/* Right Active Content Area */}
+        <main className="flex-1 min-w-0 w-full">
+          {activeTab === 'operations' && (
+             <OperationsConsole
+               orders={orders}
+               events={events}
+               payments={payments}
+               paymentTransactions={paymentTransactions}
+               paymentRecords={paymentRecords}
+               onManualOverrideStatus={onManualOverrideStatus}
+               onReassignRider={onReassignRider}
+               onInitiateRefund={onInitiateRefund}
+               initialPage={resolveOperationsPage()}
+             />
+          )}
 
-        {activeTab === 'database' && (
-          <DatabaseIndexingConsole />
-        )}
+          {activeTab === 'products' && (
+            <ProductsMasterCatalog />
+          )}
 
-        {activeTab === 'recommendations' && (
-          <RecommendationEngineConsole orders={orders} />
-        )}
+          {activeTab === 'geofence' && (
+            <div className="space-y-4">
+              <SupplyNodeTreeVisualizer orders={orders} />
+            </div>
+          )}
+
+          {activeTab === 'demand' && (
+            <DemandAnalyticsConsole orders={orders} />
+          )}
+
+          {activeTab === 'intelligence' && (
+            <MarketIntelligenceConsole />
+          )}
+
+          {activeTab === 'promotions' && (
+            <PromotionsManagerConsole />
+          )}
+
+          {activeTab === 'benchmark' && (
+            <SearchBenchmark />
+          )}
+
+          {activeTab === 'rules' && (
+            <BusinessRulesConsole />
+          )}
+
+          {activeTab === 'nfr' && (
+            <NFRConsole />
+          )}
+
+          {activeTab === 'architecture' && (
+            <ArchitectureWorkspace />
+          )}
+
+          {activeTab === 'repository' && (
+            <RepositoryStructureExplorer />
+          )}
+
+          {activeTab === 'database' && (
+            <DatabaseIndexingConsole />
+          )}
+
+          {activeTab === 'recommendations' && (
+            <RecommendationEngineConsole orders={orders} />
+          )}
+        </main>
       </div>
     </div>
   );

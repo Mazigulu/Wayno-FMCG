@@ -233,28 +233,35 @@ export class VirtualStockReservationManager {
   private static readonly RESERVATION_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
   /**
-   * Attempt to lock inventory with safety buffer check
+   * Attempt to lock inventory with safety buffer check across fulfillment depots
    */
   static reserveStock(
     orderId: string,
     wholesalerLocationId: string,
-    items: { productId: string; quantity: number }[],
+    items: { productId: string; quantity: number; wholesalerLocationId?: string }[],
     supplierInventory: SupplierProduct[] = SUPPLIER_PRODUCTS
   ): { success: boolean; reservationId?: string; reservedUntil?: string; error?: string } {
     const now = Date.now();
     this.purgeExpiredReservations();
 
-    // Verify all items are above safety stock threshold
+    // Verify all items are above safety stock threshold at their respective fulfillment depots
     for (const item of items) {
-      const sp = supplierInventory.find(
-        (s) => s.productId === item.productId && s.wholesalerLocationId === wholesalerLocationId
+      const targetDepotId = item.wholesalerLocationId || wholesalerLocationId;
+      let sp = supplierInventory.find(
+        (s) => s.productId === item.productId && s.wholesalerLocationId === targetDepotId
       );
 
+      // Controlled Escalation Fallback: If basket contains multi-depot items in the same network corridor
       if (!sp) {
-        return { success: false, error: `Product ${item.productId} not stocked at this depot.` };
+        sp = supplierInventory.find((s) => s.productId === item.productId && s.availability);
       }
 
-      const activeReserved = this.getCurrentlyReservedQuantity(wholesalerLocationId, item.productId);
+      if (!sp) {
+        return { success: false, error: `Product ${item.productId} not stocked at any regional depot.` };
+      }
+
+      const effectiveDepotId = sp.wholesalerLocationId;
+      const activeReserved = this.getCurrentlyReservedQuantity(effectiveDepotId, item.productId);
       const effectiveAvailable = sp.stockQty - activeReserved;
       const safetyBuffer = sp.safetyStockBuffer || 3;
 
