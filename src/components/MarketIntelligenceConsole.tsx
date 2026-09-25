@@ -792,7 +792,7 @@ export const MarketIntelligenceConsole: React.FC = () => {
                             <span className="text-[10px] text-slate-400 font-normal">({b.manufacturer})</span>
                             {b.rebateActive && (
                               <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1 rounded font-mono">
-                                Trade Rebate Active
+                                Trade Discount Active
                               </span>
                             )}
                           </div>

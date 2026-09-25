@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Sparkles, 
   Plus, 
@@ -27,6 +28,7 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
   onAddToCart,
   cartQuantities
 }) => {
+  const navigate = useNavigate();
   const [addedAnimationId, setAddedAnimationId] = useState<string | null>(null);
 
   if (!recommendationResult || recommendationResult.recommendations.length === 0) {
@@ -111,18 +113,21 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
                   </span>
                 </div>
 
-                <div className="flex items-center space-x-3">
-                  <div className="relative w-14 h-14 rounded bg-slate-50 border border-slate-100 overflow-hidden shrink-0">
+                <div 
+                  onClick={() => navigate(`/product/${product.id}`)}
+                  className="flex items-center space-x-3 cursor-pointer group"
+                >
+                  <div className="relative w-14 h-14 rounded bg-slate-50 border border-slate-100 overflow-hidden shrink-0 group-hover:opacity-90">
                     <img
                       src={product.image}
                       alt={product.name}
                       referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
                     />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-[10px] text-slate-500 font-semibold">{product.brand}</div>
-                    <div className="font-bold text-slate-900 text-xs truncate" title={product.name}>
+                    <div className="font-bold text-slate-900 text-xs truncate group-hover:text-blue-600" title={product.name}>
                       {product.name}
                     </div>
                     <div className="text-[11px] text-slate-500 mt-0.5">

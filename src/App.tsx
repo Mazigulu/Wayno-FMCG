@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Header } from './components/Header';
 import { RetailerApp } from './components/RetailerApp';
+import { ProductDetailPage } from './components/ProductDetailPage';
 import { WholesalerPortal } from './components/WholesalerPortal';
 import { RiderConsole } from './components/RiderConsole';
 import { AdminOperationsHub } from './components/AdminOperationsHub';
@@ -89,6 +90,10 @@ function AppContent() {
               />
             }
           />
+
+          {/* Wholesale FMCG Product Terminal & Logistics Dossier */}
+          <Route path="/product/:productId" element={<ProductDetailPage />} />
+          <Route path="/retailer/product/:productId" element={<ProductDetailPage />} />
 
           <Route
             path="/wholesaler"
@@ -189,23 +194,18 @@ function AppContent() {
         onClose={() => setTrackingOrder(null)}
       />
 
-      {/* Bottom Global Status Bar - Outlook Clean Footer */}
-      <footer className="border-t border-slate-200 bg-white text-[11px] text-slate-500 py-2.5 px-4 sm:px-6 shadow-2xs">
+      {/* Clean Global Footer */}
+      <footer className="border-t border-slate-200 bg-white text-[11px] text-slate-500 py-3 px-4 sm:px-6 shadow-2xs">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center space-x-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             <span className="font-semibold text-slate-800">
-              WAYNO FMCG Pilot Network
+              WAYNO B2B FMCG Distribution
             </span>
             <span className="text-slate-300">|</span>
-            <span>Nairobi Geo-fence Active</span>
+            <span>Nairobi Corridor Network</span>
           </div>
-          <div className="flex items-center space-x-3 text-slate-500 font-medium">
-            <span>FastAPI ML: Connected</span>
-            <span>•</span>
-            <span>Rust Axum: Ready</span>
-            <span>•</span>
-            <span>PostGIS: Active</span>
+          <div className="text-slate-400">
+            Rapid replenishment for informal retail & wholesale distribution
           </div>
         </div>
       </footer>

@@ -60,7 +60,9 @@ export const Header: React.FC<HeaderProps> = ({
     ) {
       return 'admin';
     }
-    if (currentPath.startsWith('/retailer')) return 'retailer';
+    if (currentPath.startsWith('/retailer') || currentPath.startsWith('/product')) {
+      return 'retailer';
+    }
     return propActiveTab || 'retailer';
   };
 

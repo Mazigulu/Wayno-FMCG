@@ -413,7 +413,7 @@ export const DukaEligibilityMatrix: React.FC<DukaEligibilityMatrixProps> = ({
                             ) : (
                               <>
                                 <DollarSign className="w-3 h-3 text-emerald-600" />
-                                <span>Wholesale Cash Rebate</span>
+                                <span>Wholesale Cash Discount</span>
                               </>
                             )}
                           </div>

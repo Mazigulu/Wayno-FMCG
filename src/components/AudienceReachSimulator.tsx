@@ -492,7 +492,7 @@ export const AudienceReachSimulator: React.FC<AudienceReachSimulatorProps> = ({
                   </span>
                 </div>
                 <div className="mt-2 text-base font-bold text-emerald-700">
-                  -KES {variantA.discount} rebate
+                  -KES {variantA.discount} discount
                 </div>
                 <div className="mt-1 space-y-0.5 text-[10px] text-slate-600">
                   <div>Conv Rate: <span className="font-bold text-slate-900">{variantA.conversionRate}%</span></div>
@@ -511,7 +511,7 @@ export const AudienceReachSimulator: React.FC<AudienceReachSimulatorProps> = ({
                   </span>
                 </div>
                 <div className="mt-2 text-base font-bold text-purple-700">
-                  -KES {variantB.discount} rebate
+                  -KES {variantB.discount} discount
                 </div>
                 <div className="mt-1 space-y-0.5 text-[10px] text-slate-600">
                   <div>Conv Rate: <span className="font-bold text-purple-900">{variantB.conversionRate}%</span></div>

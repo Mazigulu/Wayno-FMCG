@@ -145,7 +145,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
       targetCategory: targetProd.internalCategory,
       placementSlot: newPlacementSlot,
       headline: newHeadline || `${targetProd.name} - Targeted Trader Subsidy`,
-      subtext: newSubtext || `Instant manufacturer rebate of KES ${newDiscountKES} per unit.`,
+      subtext: newSubtext || `Instant manufacturer discount of KES ${newDiscountKES} per unit.`,
       badgeText: newBadgeText || `Sponsored • ${newSponsorName || targetProd.brand}`,
       discountKES: Number(newDiscountKES),
       boostScore: Number(newBoostScore),
@@ -457,7 +457,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
               </span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Boosted rank in algorithmic search results with clear "Sponsored" disclosure & rebate badge.
+              Boosted rank in algorithmic search results with clear "Sponsored" disclosure & discount badge.
             </p>
             <div className="mt-2 text-[10px] text-slate-600 flex justify-between pt-1.5 border-t border-slate-200">
               <span>Avg CTR: 22.1%</span>
@@ -503,7 +503,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
               </span>
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              Contextual add-on item in the retailer cart drawer with instant KES rebate per carton.
+              Contextual add-on item in the retailer cart drawer with instant KES discount per carton.
             </p>
             <div className="mt-2 text-[10px] text-slate-600 flex justify-between pt-1.5 border-t border-slate-200">
               <span>Conv: 26.8%</span>
@@ -633,7 +633,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
 
                     <td className="py-3 px-3">
                       <div className="font-bold text-emerald-700">
-                        -KES {placement.discountKES} rebate
+                        -KES {placement.discountKES} discount
                       </div>
                       <div className="text-[11px] text-slate-500">
                         +{placement.boostScore} pts search rank
@@ -791,7 +791,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
                 </p>
                 <div className="mt-3 flex items-center justify-between pt-2 border-t border-slate-700/60">
                   <span className="text-xs font-bold text-emerald-400">
-                    Rebate: -KES {selectedCampaignForDetail.discountKES} Per Unit
+                    Discount: -KES {selectedCampaignForDetail.discountKES} Per Unit
                   </span>
                   <span className="text-[11px] bg-white text-slate-900 px-2 py-0.5 rounded font-bold">
                     1-Click Stock Now
@@ -993,7 +993,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Explain the volume rebate, delivery guarantee, or stock priority for retail dukas..."
+                  placeholder="Explain the volume discount, delivery guarantee, or stock priority for retail dukas..."
                   value={newSubtext}
                   onChange={(e) => setNewSubtext(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-1.5 text-slate-900 focus:outline-none focus:border-slate-400"
@@ -1040,7 +1040,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
                       onChange={(e) => setNewIncentiveMechanism(e.target.value as IncentiveMechanism)}
                       className="w-full bg-white border border-slate-200 rounded px-2.5 py-1.5 text-slate-900 focus:outline-none focus:border-slate-400"
                     >
-                      <option value="CASH_DISCOUNT_KES">Direct Wholesale Cash Rebate (KES)</option>
+                      <option value="CASH_DISCOUNT_KES">Direct Wholesale Cash Discount (KES)</option>
                       <option value="FREE_BODA_DELIVERY">Free Boda Boda Micro-Delivery</option>
                       <option value="MPESA_CASHBACK">Instant M-Pesa Merchant Cashback</option>
                     </select>
@@ -1071,7 +1071,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   <div>
                     <label className="block text-slate-500 text-[11px] mb-0.5">
-                      Rebate (KES)
+                      Discount (KES)
                     </label>
                     <input
                       type="number"

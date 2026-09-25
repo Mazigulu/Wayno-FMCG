@@ -41,8 +41,8 @@ export const BrandConquestingView: React.FC<BrandConquestingViewProps> = ({
       rivalCategory: 'Grains & Flours',
       interceptProduct: PRODUCTS.find((p) => p.id === 'prod_pembe_flour_2kg') || PRODUCTS[1],
       sponsor: 'Unga Group PLC',
-      subsidy: 'KES 120 Rebate per bale',
-      incentiveType: 'Cash Rebate',
+      subsidy: 'KES 120 Discount per bale',
+      incentiveType: 'Cash Discount',
       interceptCTR: '31.4%',
       conversionsMonthly: 420,
       marginDifference: '+7.8% extra profit',
@@ -252,7 +252,7 @@ export const BrandConquestingView: React.FC<BrandConquestingViewProps> = ({
                   </div>
                   <div className="text-[10px] text-emerald-700 font-semibold mt-0.5 flex items-center space-x-1">
                     <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    <span>Manufacturer rebate of KES {interceptedItem.promoDiscountKES || 120} applied</span>
+                    <span>Manufacturer discount of KES {interceptedItem.promoDiscountKES || 120} applied</span>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, 
   ShoppingBag, 
@@ -89,6 +90,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   activeOrders,
   onOrderClick,
 }) => {
+  const navigate = useNavigate();
   const [currentPage, setCurrentPage] = useState<RetailerPage>('catalog');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState<SearchExecutionResultEnhanced | null>(null);
@@ -153,6 +155,19 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   // Recommendations for Retailer Tray
   const [recommendationResult, setRecommendationResult] = useState<RecommendationExecutionResult | null>(null);
 
+  // Mobile viewport detection for responsive search box layout
+  const [isMobile, setIsMobile] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // Compute recommendations reactively
   useEffect(() => {
     try {
@@ -210,7 +225,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
 
   const CATEGORIES = [
     'All',
-    'Promotional Rebates',
+    'Special Deals',
     'Flour & Staples',
     'Fats & Oils',
     'Spreads & Dairy',
@@ -298,7 +313,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   const displayedResults = searchResult?.results.filter((item) => {
     const { product, isSponsored, promoDiscountKES } = item;
     if (selectedCategory === 'All') return true;
-    if (selectedCategory === 'Promotional Rebates') return Boolean(isSponsored || promoDiscountKES);
+    if (selectedCategory === 'Special Deals') return Boolean(isSponsored || promoDiscountKES);
     if (selectedCategory === 'Flour & Staples') return product.internalCategory.includes('Flour') || product.internalCategory.includes('Grains');
     if (selectedCategory === 'Fats & Oils') return product.internalCategory.includes('Oil') || product.internalCategory.includes('Fats');
     if (selectedCategory === 'Spreads & Dairy') return product.internalCategory.includes('Spread') || product.internalCategory.includes('Dairy');
@@ -497,7 +512,8 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                     }}
                     className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
                   >
-                    <span>Claim -KES {currentHero.discountKES} Rebate</span>
+                    <span className="line-through text-slate-400 font-mono text-[11px]">KES {(currentHero.originalPrice || 2400).toLocaleString()}</span>
+                    <span>KES {((currentHero.originalPrice || 2400) - currentHero.discountKES).toLocaleString()}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -507,7 +523,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
 
           {/* Search Box */}
           {/* Hero Search Section - Inspired by modern Google Search */}
-          <div className="bg-gradient-to-b from-white via-slate-50/50 to-white border border-slate-200/90 rounded-2xl p-5 sm:p-7 shadow-xs space-y-4">
+          <div className="bg-gradient-to-b from-white via-slate-50/50 to-white border border-slate-200/90 rounded-xl sm:rounded-2xl p-3.5 sm:p-7 shadow-xs space-y-3 sm:space-y-4">
             {/* Header & Context */}
             <div className="text-center max-w-xl mx-auto space-y-1">
               <h2 className="text-lg sm:text-2xl font-bold tracking-tight text-slate-900">
@@ -518,23 +534,23 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
               </p>
             </div>
 
-            {/* Google-Style Centerpiece Search Bar - Plain & Immediate (No Animations) */}
-            <div className="max-w-2xl mx-auto w-full relative min-h-[52px] sm:min-h-[56px] z-30">
+            {/* Google-Style Centerpiece Search Bar - Responsive, Plain & Immediate (No Animations) */}
+            <div className="max-w-2xl mx-auto w-full relative min-h-[46px] sm:min-h-[56px] z-30">
               <div 
                 className={`bg-white ${
                   isAutocompleteOpen
-                    ? 'absolute top-0 left-0 right-0 rounded-[28px] shadow-2xl border border-slate-200/90 overflow-hidden z-40'
+                    ? 'absolute top-0 left-0 right-0 rounded-2xl sm:rounded-[28px] shadow-2xl border border-slate-200/90 overflow-hidden z-40'
                     : 'relative w-full rounded-full border border-slate-200 hover:border-slate-300 shadow-md'
                 }`}
               >
-                {/* Search Input Row (Top Unit) */}
-                <div className="flex items-center px-4 sm:px-5 py-3 sm:py-3.5">
+                {/* Search Input Row (Top Unit) - Mobile Responsive Spacing */}
+                <div className="flex items-center px-3 sm:px-5 py-2 sm:py-3.5 gap-1.5 sm:gap-2">
                   {/* Search Magnifier Icon */}
-                  <div className="pr-2 sm:pr-3 flex items-center pointer-events-none text-slate-400">
-                    <Search className="w-5 h-5 text-slate-400" />
+                  <div className="flex items-center pointer-events-none text-slate-400 shrink-0">
+                    <Search className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                   </div>
 
-                  {/* Input Field */}
+                  {/* Input Field - flex-1 min-w-0 prevents mobile overflow and cramped typing */}
                   <input
                     type="search"
                     id="retailer-fmcg-search"
@@ -560,37 +576,45 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                         handleSearchSubmit();
                       }
                     }}
-                    placeholder="Try 'unga 2kg bale', 'bluband', 'cooking oil 20l', or 'omo'..."
-                    className="w-full bg-transparent text-slate-900 placeholder-slate-400 focus:outline-none text-sm sm:text-base font-normal tracking-normal [&::-webkit-search-cancel-button]:hidden"
+                    placeholder={
+                      isMobile
+                        ? "Search unga, oil, soap, drinks..."
+                        : "Try 'unga 2kg bale', 'bluband', 'cooking oil 20l', or 'omo'..."
+                    }
+                    className="flex-1 min-w-0 bg-transparent text-slate-900 placeholder-slate-400 focus:outline-none text-xs sm:text-base font-normal tracking-normal truncate sm:text-clip [&::-webkit-search-cancel-button]:hidden"
                   />
 
                   {/* Right controls inside pill */}
-                  <div className="pr-1 sm:pr-1.5 flex items-center space-x-1.5 shrink-0">
+                  <div className="flex items-center space-x-1 sm:space-x-1.5 shrink-0">
                     {searchQuery && (
                       <button
+                        type="button"
                         onMouseDown={(e) => {
                           e.preventDefault();
                           setSearchQuery('');
                           setSelectedCategory('All');
                           setIsAutocompleteOpen(false);
                         }}
-                        className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                        className="p-1 sm:p-1.5 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
                         title="Clear search"
+                        aria-label="Clear search"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       </button>
                     )}
 
-                    {/* Primary Enter / Search Action Button */}
+                    {/* Primary Enter / Search Action Button - Compact icon on mobile so it never gets in the way */}
                     <button
+                      type="button"
                       onMouseDown={(e) => {
                         e.preventDefault();
                         handleSearchSubmit();
                       }}
-                      className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full shadow-xs cursor-pointer"
+                      className="flex items-center justify-center bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs sm:text-sm font-medium w-8 h-8 sm:w-auto sm:px-4 sm:py-2 rounded-full shadow-xs cursor-pointer transition-all shrink-0"
                       title="Search (Enter ↵)"
+                      aria-label="Submit search"
                     >
-                      <span>Search</span>
+                      <span className="hidden sm:inline sm:mr-1.5">Search</span>
                       <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     </button>
                   </div>
@@ -598,7 +622,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
 
                 {/* Extended Unit Content: Plain & Immediate without animations */}
                 {isAutocompleteOpen && (
-                  <div className="border-t border-slate-100/90 pt-1 pb-2.5 text-slate-700">
+                  <div className="border-t border-slate-100/90 pt-1 pb-2.5 text-slate-700 max-h-[60vh] sm:max-h-[420px] overflow-y-auto">
                     {/* Empty query: Show Recent Searches & Trending FMCG Searches */}
                     {!searchQuery.trim() && (
                       <>
@@ -736,38 +760,40 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
             </div>
 
             {/* Google-Style Action Buttons & Sort Strip */}
-            <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs">
+            <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 pt-1 text-xs">
               <button
+                type="button"
                 onClick={() => {
                   addToRecentSearches(searchQuery || 'Popular');
                   setSelectedCategory('All');
                   setIsAutocompleteOpen(false);
                 }}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-4 py-1.5 rounded-full cursor-pointer border border-slate-200"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-3 sm:px-4 py-1.5 rounded-full cursor-pointer border border-slate-200 text-xs"
               >
                 Search Wholesale
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   const randomChip = SUGGESTED_CHIPS[Math.floor(Math.random() * SUGGESTED_CHIPS.length)];
                   setSelectedCategory('All');
                   handleChipClick(randomChip.query);
                   setIsAutocompleteOpen(false);
                 }}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-4 py-1.5 rounded-full cursor-pointer border border-slate-200 flex items-center space-x-1.5"
+                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-3 sm:px-4 py-1.5 rounded-full cursor-pointer border border-slate-200 flex items-center space-x-1.5 text-xs"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 <span>I'm Feeling Lucky</span>
               </button>
 
               {/* Ranking Mode Dropdown */}
-              <div className="flex items-center space-x-1.5 pl-2 sm:border-l sm:border-slate-200 text-slate-500">
+              <div className="flex items-center space-x-1.5 pl-0 sm:pl-2 sm:border-l sm:border-slate-200 text-slate-500">
                 <span className="text-[11px] font-medium hidden sm:inline">Sort:</span>
                 <select
                   value={rankingStrategy}
                   onChange={(e) => setRankingStrategy(e.target.value as any)}
-                  className="text-xs bg-white border border-slate-200 rounded-full px-3 py-1 font-medium text-slate-700 hover:border-slate-300 focus:outline-none cursor-pointer"
+                  className="text-xs bg-white border border-slate-200 rounded-full px-2.5 sm:px-3 py-1 font-medium text-slate-700 hover:border-slate-300 focus:outline-none cursor-pointer"
                 >
                   <option value="SMART_BALANCED">Recommended (Balanced)</option>
                   <option value="PRICE_LOW">Cheapest Wholesale</option>
@@ -939,12 +965,11 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           <div
                             key={sub.product.id}
                             onClick={() => {
-                              setSelectedCategory('All');
-                              setSearchQuery(sub.product.name);
+                              navigate(`/product/${sub.product.id}`);
                             }}
-                            className="p-2.5 border border-slate-200 rounded hover:border-slate-300 cursor-pointer transition-colors bg-white"
+                            className="p-2.5 border border-slate-200 rounded hover:border-slate-300 hover:shadow-2xs cursor-pointer transition-all bg-white group"
                           >
-                            <div className="font-bold text-slate-900 truncate">{sub.product.name}</div>
+                            <div className="font-bold text-slate-900 group-hover:text-blue-600 truncate">{sub.product.name}</div>
                             <div className="text-[11px] text-emerald-700 font-semibold">
                               KES {sub.bestSupplierProduct.price} • {sub.product.packSize}
                             </div>
@@ -1000,47 +1025,65 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                               <span>{promoBadge || `Sponsored Deal • ${promotedBy || 'Manufacturer'}`}</span>
                             </span>
                             {promoDiscountKES && (
-                              <span className="bg-amber-600 text-white px-1.5 py-0.2 rounded text-[9px] font-mono">
-                                -KES {promoDiscountKES} REBATE
+                              <span className="bg-amber-600 text-white px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap inline-flex items-center space-x-1.5 shadow-2xs shrink-0">
+                                <span className="line-through text-amber-200">
+                                  KES {wholesalePrice.toLocaleString()}
+                                </span>
+                                <span className="font-bold text-white">
+                                  KES {effectiveWholesalePrice.toLocaleString()}
+                                </span>
                               </span>
                             )}
                           </div>
                         )}
 
-                        {/* Image & Pack badge */}
-                        <div className="relative h-36 w-full rounded overflow-hidden bg-slate-50 border border-slate-100">
-                          <img
-                            src={product.image}
-                            alt={product.name}
-                            referrerPolicy="no-referrer"
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                          <div className="absolute top-2 left-2 bg-white/95 px-2 py-0.5 rounded border border-slate-200 text-[10px] font-semibold text-slate-900">
-                            {product.packSize}
+                        {/* Clickable Product Header, Image & Details - Navigates to wholesale terminal */}
+                        <div
+                          onClick={() => {
+                            recordSearchResultClick(searchQuery || 'catalog', product.id);
+                            navigate(`/product/${product.id}`);
+                          }}
+                          className="cursor-pointer group space-y-2.5"
+                        >
+                          {/* Image & Pack badge */}
+                          <div className="relative h-36 w-full rounded overflow-hidden bg-slate-50 border border-slate-100">
+                            <img
+                              src={product.image}
+                              alt={product.name}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              loading="lazy"
+                            />
+                            <div className="absolute top-2 left-2 bg-white/95 px-2 py-0.5 rounded border border-slate-200 text-[10px] font-semibold text-slate-900">
+                              {product.packSize}
+                            </div>
+
+                            <div className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                              promoDiscountKES 
+                                ? 'bg-amber-100 text-amber-950 border-amber-300' 
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}>
+                              +{marginPercent}% Duka Margin {promoDiscountKES ? `(Discount Boost)` : ''}
+                            </div>
                           </div>
 
-                          <div className={`absolute bottom-2 right-2 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
-                            promoDiscountKES 
-                              ? 'bg-amber-100 text-amber-950 border-amber-300' 
-                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          }`}>
-                            +{marginPercent}% Duka Margin {promoDiscountKES ? `(Rebate Boost)` : ''}
+                          {/* Product Details */}
+                          <div>
+                            <div className="flex items-center justify-between text-[10px] text-slate-500">
+                              <span className="font-semibold text-slate-700">{product.brand}</span>
+                              <span className="text-slate-400">{product.internalCategory}</span>
+                            </div>
+                            <h4 className="text-xs font-semibold text-slate-900 mt-0.5 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                              {product.name}
+                            </h4>
+                            <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">
+                              {product.description}
+                            </p>
+                            <div className="flex items-center text-[10px] font-semibold text-slate-800 group-hover:text-blue-600 group-hover:underline mt-1 pt-0.5">
+                              <span>Wholesale Details & Logistics</span>
+                              <ArrowRight className="w-2.5 h-2.5 ml-1" />
+                            </div>
                           </div>
-                        </div>
-
-                        {/* Product Details */}
-                        <div>
-                          <div className="flex items-center justify-between text-[10px] text-slate-500">
-                            <span className="font-semibold text-slate-700">{product.brand}</span>
-                            <span className="text-slate-400">{product.internalCategory}</span>
-                          </div>
-                          <h4 className="text-xs font-semibold text-slate-900 mt-0.5 line-clamp-2">
-                            {product.name}
-                          </h4>
-                          <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">
-                            {product.description}
-                          </p>
                         </div>
 
                         {/* Match Badges & Supply Node Tree Classification */}
@@ -1130,7 +1173,13 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
 
                       {/* Pricing & Add to Cart */}
                       <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-                        <div>
+                        <div
+                          onClick={() => {
+                            recordSearchResultClick(searchQuery || 'catalog', product.id);
+                            navigate(`/product/${product.id}`);
+                          }}
+                          className="cursor-pointer"
+                        >
                           <span className="text-[10px] text-slate-400 block uppercase font-medium">
                             Wholesale Price {promoDiscountKES ? '(Subsidized)' : ''}
                           </span>
@@ -1154,8 +1203,11 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                         {qtyInCart > 0 ? (
                           <div className="flex items-center space-x-1 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
                             <button
-                              onClick={() => updateCartQuantity(product.id, -1)}
-                              className="w-5 h-5 rounded bg-white hover:bg-slate-200 text-slate-800 flex items-center justify-center font-bold border border-slate-200 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateCartQuantity(product.id, -1);
+                              }}
+                              className="w-5 h-5 rounded bg-white hover:bg-slate-200 text-slate-800 flex items-center justify-center font-bold border border-slate-200 transition-colors cursor-pointer"
                               aria-label="Decrease quantity"
                             >
                               <Minus className="w-2.5 h-2.5" />
@@ -1164,8 +1216,11 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                               {qtyInCart}
                             </span>
                             <button
-                              onClick={() => updateCartQuantity(product.id, 1)}
-                              className="w-5 h-5 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center font-bold transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateCartQuantity(product.id, 1);
+                              }}
+                              className="w-5 h-5 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center font-bold transition-colors cursor-pointer"
                               aria-label="Increase quantity"
                             >
                               <Plus className="w-2.5 h-2.5" />
@@ -1173,7 +1228,10 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           </div>
                         ) : (
                           <button
-                            onClick={() => handleAdd(product, bestSupplierProduct, appliedCampaignId, promoDiscountKES)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAdd(product, bestSupplierProduct, appliedCampaignId, promoDiscountKES);
+                            }}
                             className={`flex items-center space-x-1 px-3 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer ${
                               addedAnimationId === product.id
                                 ? 'bg-emerald-600 text-white'
