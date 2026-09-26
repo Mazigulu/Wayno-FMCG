@@ -185,12 +185,13 @@ function AppContent() {
         removeFromCart={removeFromCart}
         currentShop={currentShop}
         onOrderCreated={handleOrderCreated}
+        onTrackOrder={setTrackingOrder}
         addToCart={addToCart}
       />
 
-      {/* Order Tracking Modal */}
+      {/* Order Tracking Modal - Real-Time reactive synchronization */}
       <OrderTrackingModal
-        order={trackingOrder}
+        order={trackingOrder ? (orders.find((o) => o.id === trackingOrder.id) || trackingOrder) : null}
         onClose={() => setTrackingOrder(null)}
       />
 

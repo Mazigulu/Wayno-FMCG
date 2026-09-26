@@ -512,8 +512,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                     }}
                     className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer shadow-2xs whitespace-nowrap"
                   >
-                    <span className="line-through text-slate-400 font-mono text-[11px]">KES {(currentHero.originalPrice || 2400).toLocaleString()}</span>
-                    <span>KES {((currentHero.originalPrice || 2400) - currentHero.discountKES).toLocaleString()}</span>
+                    <span>Claim Deal (-KES {currentHero.discountKES})</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1022,7 +1021,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           <div className="flex items-center justify-between bg-amber-100/90 text-amber-950 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-bold">
                             <span className="flex items-center space-x-1">
                               <Star className="w-2.5 h-2.5 fill-amber-700 text-amber-700" />
-                              <span>{promoBadge || `Sponsored Deal • ${promotedBy || 'Manufacturer'}`}</span>
+                              <span>{promoBadge?.startsWith('Sponsored Deal') ? promoBadge : `Sponsored Deal • ${promotedBy || product.brand || 'Manufacturer'}`}</span>
                             </span>
                             {promoDiscountKES && (
                               <span className="bg-amber-600 text-white px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap inline-flex items-center space-x-1.5 shadow-2xs shrink-0">

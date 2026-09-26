@@ -23,6 +23,7 @@ import {
 import { useWayno } from '../context/WaynoContext';
 import { Product, SupplierProduct } from '../types/wayno';
 import { INITIAL_PROMOTIONAL_PLACEMENTS } from '../data/promotionsData';
+import { WHOLESALERS } from '../data/mockData';
 
 export const ProductDetailPage: React.FC = () => {
   const { productId } = useParams<{ productId: string }>();
@@ -52,16 +53,17 @@ export const ProductDetailPage: React.FC = () => {
     if (available.length > 0) return available[0];
     const anyMatching = supplierProducts.find((sp) => sp.productId === product.id);
     if (anyMatching) return anyMatching;
+    const firstWs = WHOLESALERS[0];
     return {
       id: `supp_${product.id}`,
-      supplierId: 'hub_nairobi',
-      wholesalerLocationId: 'loc_corridor_hub',
+      supplierId: firstWs?.wholesalerId || 'wholesaler_01',
+      wholesalerLocationId: firstWs?.id || 'ws_eastleigh',
       productId: product.id,
       price: product.wholesalePrice || 1000,
       availability: true,
       stockQty: 100,
       updatedAt: 'Just now',
-      wholesalerName: 'Corridor Fulfillment Hub',
+      wholesalerName: firstWs?.name || 'Regional FMCG Depot',
       distanceKm: 2.5,
     };
   }, [supplierProducts, product]);

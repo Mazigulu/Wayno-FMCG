@@ -21,7 +21,8 @@ import {
   Radio
 } from 'lucide-react';
 import { Rider, Order, DeliveryExceptionCode } from '../types/wayno';
-import { INITIAL_RIDERS } from '../data/mockData';
+import { INITIAL_RIDERS, WHOLESALERS } from '../data/mockData';
+import { calculateDistanceKm } from '../services/searchEngine';
 
 export type RiderPage = 'active-run' | 'available-jobs' | 'earnings';
 
@@ -60,8 +61,23 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
   // Active run for this rider
   const assignedOrder = orders.find((o) => o.riderId === activeRider.id && o.status !== 'DELIVERED');
 
-  // Orders waiting for a rider
-  const readyOrders = orders.filter((o) => o.status === 'READY_FOR_PICKUP');
+  // Orders waiting for a courier in this rider's regional operational radius (max 25km dispatch corridor)
+  const readyOrders = orders.filter((o) => {
+    if (o.status !== 'READY_FOR_PICKUP') return false;
+    const depot = WHOLESALERS.find((w) => w.id === o.wholesalerLocationId);
+    if (!depot) return true;
+    if (activeRider.currentLat && activeRider.currentLng && depot.latitude && depot.longitude) {
+      const distanceToDepot = calculateDistanceKm(
+        activeRider.currentLat,
+        activeRider.currentLng,
+        depot.latitude,
+        depot.longitude
+      );
+      // Courier operational dispatch limit: 25 km from depot loading bay
+      return distanceToDepot <= 25.0;
+    }
+    return true;
+  });
 
   const handleSelfAssign = (order: Order) => {
     onAssignRider(order.id, activeRider);
@@ -268,9 +284,18 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
 
                     {assignedOrder.status === 'RIDER_ASSIGNED' && (
                       <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 max-w-sm">
-                        <label className="text-xs font-medium text-slate-700 block">
-                          Enter Wholesaler Handover OTP:
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-medium text-slate-700 block">
+                            Enter Wholesaler Handover OTP:
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setPickupCodeInput(assignedOrder.pickupOtp)}
+                            className="text-[11px] text-blue-600 hover:text-blue-800 underline font-mono cursor-pointer"
+                          >
+                            Fill OTP ({assignedOrder.pickupOtp})
+                          </button>
+                        </div>
                         <div className="flex items-center space-x-2">
                           <input
                             type="text"
@@ -316,9 +341,18 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
 
                     {assignedOrder.status === 'OUT_FOR_DELIVERY' && (
                       <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 max-w-md">
-                        <label className="text-xs font-medium text-slate-700 block">
-                          Ask Shopkeeper for Delivery Confirmation OTP:
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-medium text-slate-700 block">
+                            Ask Shopkeeper for Delivery Confirmation OTP:
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setDeliveryCodeInput(assignedOrder.deliveryOtp)}
+                            className="text-[11px] text-emerald-700 hover:text-emerald-800 underline font-mono cursor-pointer"
+                          >
+                            Fill OTP ({assignedOrder.deliveryOtp})
+                          </button>
+                        </div>
                         <div className="flex items-center space-x-2">
                           <input
                             type="text"
@@ -367,18 +401,58 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
               </div>
             </div>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-md p-8 text-center space-y-3">
-              <Bike className="w-8 h-8 text-slate-400 mx-auto" />
-              <h2 className="text-sm font-bold text-slate-900">No Active Mission Right Now</h2>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                You are currently marked as available in your regional Nairobi fulfillment zone. Browse available wholesale pickup jobs to claim a run.
-              </p>
-              <button
-                onClick={() => setCurrentPage('available-jobs')}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded transition-colors cursor-pointer"
-              >
-                Browse Available Pickups ({readyOrders.length})
-              </button>
+            <div className="space-y-4">
+              <div className="bg-white border border-slate-200 rounded-md p-6 sm:p-8 text-center space-y-3">
+                <Bike className="w-8 h-8 text-slate-400 mx-auto" />
+                <h2 className="text-sm font-bold text-slate-900">No Active Mission In Flight</h2>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  You are online and ready for dispatch in Nairobi. {readyOrders.length > 0 ? `${readyOrders.length} wholesale orders are staged and awaiting pickup!` : 'Waiting for incoming wholesaler staging.'}
+                </p>
+                {readyOrders.length > 0 && (
+                  <button
+                    onClick={() => setCurrentPage('available-jobs')}
+                    className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2 rounded transition-colors cursor-pointer"
+                  >
+                    View All Available Jobs ({readyOrders.length})
+                  </button>
+                )}
+              </div>
+
+              {readyOrders.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
+                    <Package className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Orders Ready for Pickup in Zone</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {readyOrders.map((order) => (
+                      <div
+                        key={order.id}
+                        className="bg-white border border-amber-300 rounded-md p-3.5 space-y-2.5 shadow-2xs"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono font-bold text-xs text-slate-900">{order.id}</span>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-mono">
+                            + KES 150 Boda Payout
+                          </span>
+                        </div>
+                        <div className="text-xs space-y-1">
+                          <p className="text-slate-800 font-medium">Pickup: {order.wholesalerName}</p>
+                          <p className="text-slate-500">Deliver to: {order.shopName} ({order.shopAddress})</p>
+                          <p className="text-slate-400 text-[11px]">{order.items.length} items · OTP: {order.pickupOtp}</p>
+                        </div>
+                        <button
+                          onClick={() => handleSelfAssign(order)}
+                          className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-1.5 rounded transition-colors cursor-pointer flex items-center justify-center space-x-1"
+                        >
+                          <Bike className="w-3.5 h-3.5" />
+                          <span>Claim & Start Pickup</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -9,14 +9,16 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx scripts/validate-ecosystem.ts && tsx scripts/e2e-top-down-simulation.ts && tsx scripts/test-admin-operations.ts && tsx scripts/test-hierarchical-geofencing.ts && tsx scripts/test-search-optimizations.ts && tsx scripts/test-delivery-engine.ts && tsx scripts/test-edge-cases.ts",
+    "test": "tsx scripts/validate-ecosystem.ts && tsx scripts/e2e-top-down-simulation.ts && tsx scripts/test-admin-operations.ts && tsx scripts/test-hierarchical-geofencing.ts && tsx scripts/test-search-optimizations.ts && tsx scripts/test-delivery-engine.ts && tsx scripts/test-edge-cases.ts && tsx scripts/test-e2e-checkout-pipeline.ts",
     "test:ecosystem": "tsx scripts/validate-ecosystem.ts",
     "test:e2e": "tsx scripts/e2e-top-down-simulation.ts",
     "test:admin": "tsx scripts/test-admin-operations.ts",
     "test:geofence": "tsx scripts/test-hierarchical-geofencing.ts",
     "test:search": "tsx scripts/test-search-optimizations.ts",
     "test:delivery": "tsx scripts/test-delivery-engine.ts",
-    "test:edges": "tsx scripts/test-edge-cases.ts"
+    "test:edges": "tsx scripts/test-edge-cases.ts",
+    "test:checkout": "tsx scripts/test-e2e-checkout-pipeline.ts",
+    "test:production": "tsx scripts/test-production-multi-persona.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

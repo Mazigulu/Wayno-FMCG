@@ -146,7 +146,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
       placementSlot: newPlacementSlot,
       headline: newHeadline || `${targetProd.name} - Targeted Trader Subsidy`,
       subtext: newSubtext || `Instant manufacturer discount of KES ${newDiscountKES} per unit.`,
-      badgeText: newBadgeText || `Sponsored • ${newSponsorName || targetProd.brand}`,
+      badgeText: newBadgeText || `Sponsored Deal • ${newSponsorName || targetProd.brand}`,
       discountKES: Number(newDiscountKES),
       boostScore: Number(newBoostScore),
       cpcBidKES: Number(newCpcBidKES),
@@ -163,7 +163,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
       priority: placements.length + 1,
       objective: newObjective,
       incentiveMechanism: newIncentiveMechanism,
-      exclusiveBadgeText: newBadgeText,
+      exclusiveBadgeText: newBadgeText || `Sponsored Deal • ${newSponsorName || targetProd.brand}`,
       targeting: {
         targetZones: newTargetZones,
         targetZoneNames: newTargetZones.map((z) => z.replace('zone_nairobi_', '').toUpperCase()),
@@ -979,7 +979,7 @@ export const PromotionsManagerConsole: React.FC<PromotionsManagerConsoleProps> =
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g., Sponsored • Unga Group"
+                    placeholder="e.g., Sponsored Deal • Unga Group"
                     value={newBadgeText}
                     onChange={(e) => setNewBadgeText(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-1.5 text-slate-900 focus:outline-none focus:border-slate-400"

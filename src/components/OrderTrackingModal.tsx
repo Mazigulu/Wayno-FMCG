@@ -196,26 +196,19 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
             </div>
           )}
 
-          {/* OTP Box */}
-          <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded border border-slate-200">
+          {/* Duka Delivery Handover PIN */}
+          <div className="bg-emerald-50/70 border border-emerald-200 rounded p-3 text-xs flex items-center justify-between">
             <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-500 uppercase font-medium block">
-                Wholesaler Pickup OTP
+              <span className="text-[10px] text-emerald-900 font-bold uppercase tracking-wide block">
+                Your Delivery Handover PIN
               </span>
-              <span className="font-mono text-base font-bold text-slate-900">
-                {order.pickupOtp}
-              </span>
-              <span className="text-[10px] text-slate-500 block">Checked at depot bay</span>
+              <p className="text-[11px] text-emerald-800">
+                Give this 4-digit PIN to the motorcycle rider when your goods arrive at the duka.
+              </p>
             </div>
-            <div className="space-y-0.5">
-              <span className="text-[10px] text-slate-500 uppercase font-medium block">
-                Your Delivery Proof OTP
-              </span>
-              <span className="font-mono text-base font-bold text-emerald-700">
-                {order.deliveryOtp}
-              </span>
-              <span className="text-[10px] text-slate-500 block">Give to rider on arrival</span>
-            </div>
+            <span className="font-mono text-xl font-bold text-emerald-800 bg-white border border-emerald-300 px-3 py-1 rounded shadow-2xs">
+              {order.deliveryOtp}
+            </span>
           </div>
 
           {/* Emergency Offline Delivery OTP / USSD Fallback */}

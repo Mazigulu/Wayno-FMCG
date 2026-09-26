@@ -62,7 +62,7 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
   } = useWayno();
 
   const [currentPage, setCurrentPage] = useState<WholesalerPage>('dispatch');
-  const [selectedWholesalerId, setSelectedWholesalerId] = useState<string>(WHOLESALERS[0].id);
+  const [selectedWholesalerId, setSelectedWholesalerId] = useState<string>(WHOLESALERS[0]?.id || 'ws_eastleigh');
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState<number>(0);
   const [inventorySearch, setInventorySearch] = useState('');
@@ -84,13 +84,15 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
 
   const currentWholesaler = WHOLESALERS.find((w) => w.id === selectedWholesalerId) || WHOLESALERS[0];
 
-  // Filter orders assigned to this wholesaler
-  const wholesalerOrders = orders.filter(
-    (o) => o.wholesalerLocationId === currentWholesaler.id
+  // STRICT TENANT ISOLATION: Wholesaler ONLY sees orders containing items assigned to their depot facility
+  const wholesalerOrders = orders.filter((o) => 
+    o.wholesalerLocationId === currentWholesaler.id ||
+    o.wholesalerName === currentWholesaler.name ||
+    o.items?.some((it) => it.wholesalerLocationId === currentWholesaler.id)
   );
 
   const pendingOrders = wholesalerOrders.filter((o) =>
-    ['PAID', 'FULFILLMENT_PENDING', 'SUPPLIER_CONFIRMED'].includes(o.status)
+    ['PAID', 'FULFILLMENT_PENDING', 'SUPPLIER_PENDING', 'SUPPLIER_CONFIRMED', 'ACCEPTED', 'PREPARING', 'PARTIALLY_FULFILLED'].includes(o.status)
   );
 
   const readyOrders = wholesalerOrders.filter((o) => o.status === 'READY_FOR_PICKUP');
@@ -99,7 +101,9 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
   );
 
   const filteredOrders = wholesalerOrders.filter((o) => {
-    if (dispatchFilter === 'PENDING') return ['PAID', 'FULFILLMENT_PENDING', 'SUPPLIER_CONFIRMED'].includes(o.status);
+    if (dispatchFilter === 'PENDING') {
+      return ['PAID', 'FULFILLMENT_PENDING', 'SUPPLIER_PENDING', 'SUPPLIER_CONFIRMED', 'ACCEPTED', 'PREPARING', 'PARTIALLY_FULFILLED'].includes(o.status);
+    }
     if (dispatchFilter === 'STAGED') return o.status === 'READY_FOR_PICKUP';
     if (dispatchFilter === 'DISPATCHED') return ['RIDER_ASSIGNED', 'PICKED_UP', 'OUT_FOR_DELIVERY', 'DELIVERED'].includes(o.status);
     return true;
@@ -247,18 +251,24 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0 min-w-0 max-w-full sm:max-w-[240px] md:max-w-[280px]">
-            <label className="text-[11px] text-slate-500 font-medium hidden sm:inline shrink-0">Switch Depot:</label>
+          <div className="flex items-center space-x-2 shrink-0 min-w-0 max-w-full sm:max-w-[280px] md:max-w-[340px]">
+            <label className="text-[11px] text-slate-500 font-medium hidden sm:inline shrink-0">Depot Account:</label>
             <select
               value={selectedWholesalerId}
               onChange={(e) => setSelectedWholesalerId(e.target.value)}
               className="bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 text-xs rounded px-2.5 py-1.5 font-medium focus:border-slate-800 focus:outline-none transition-colors cursor-pointer w-full min-w-0 max-w-full truncate"
             >
-              {WHOLESALERS.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
+              {WHOLESALERS.map((w) => {
+                const count = orders.filter((o) => 
+                  (o.wholesalerLocationId === w.id || o.items?.some(it => it.wholesalerLocationId === w.id)) && 
+                  o.status !== 'DELIVERED'
+                ).length;
+                return (
+                  <option key={w.id} value={w.id}>
+                    {w.name} {count > 0 ? `(${count} active)` : '(0 orders)'}
+                  </option>
+                );
+              })}
             </select>
           </div>
         </div>
@@ -414,10 +424,18 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
                       </span>
                     </div>
 
-                    <div>
-                      <span className="text-[10px] text-slate-400 block font-medium">Destination Duka:</span>
-                      <h4 className="text-xs font-bold text-slate-900">{order.shopName}</h4>
-                      <p className="text-[11px] text-slate-500">{order.shopAddress}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-medium">Destination Duka:</span>
+                        <h4 className="text-xs font-bold text-slate-900">{order.shopName}</h4>
+                        <p className="text-[11px] text-slate-500">{order.shopAddress}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] text-slate-400 block font-medium">Fulfillment Depot:</span>
+                        <span className="text-[11px] font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block truncate max-w-[170px]">
+                          {order.wholesalerName || 'Eastleigh Depot'}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Items to Pack */}

@@ -13,7 +13,6 @@ import {
   Loader2, 
   AlertCircle,
   MapPin,
-  Building,
   ShoppingBag,
   Tag,
   Star,
@@ -24,7 +23,7 @@ import {
 } from 'lucide-react';
 import { CartItem, Order, RetailerShop, Product, SupplierProduct, OrderItem } from '../types/wayno';
 import { paymentService } from '../services/paymentService';
-import { PRODUCTS, SUPPLIER_PRODUCTS } from '../data/mockData';
+import { PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS } from '../data/mockData';
 import {
   calculateOrderPayload,
   generateOfflineDeliveryCode,
@@ -44,6 +43,7 @@ interface CartCheckoutModalProps {
   removeFromCart: (productId: string) => void;
   currentShop: RetailerShop;
   onOrderCreated: (order: Order) => void;
+  onTrackOrder?: (order: Order) => void;
   addToCart?: (
     product: Product, 
     supplierProduct: SupplierProduct, 
@@ -60,6 +60,7 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   removeFromCart,
   currentShop,
   onOrderCreated,
+  onTrackOrder,
   addToCart,
 }) => {
   const [phoneNumber, setPhoneNumber] = useState(currentShop.phone.replace(/\s+/g, ''));
@@ -77,6 +78,9 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   const activeUpsell = upsellPlacements.find(
     (p) => !cart.some((c) => c.product.id === p.targetProductId)
   );
+  const upsellProduct = activeUpsell ? PRODUCTS.find((p) => p.id === activeUpsell.targetProductId) : null;
+  const upsellOriginalPrice = upsellProduct?.wholesalePrice || 1450;
+  const upsellDiscountedPrice = Math.max(1, upsellOriginalPrice - (activeUpsell?.discountKES || 95));
 
   // Record impression for active checkout upsell
   useEffect(() => {
@@ -104,9 +108,13 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
   const deliveryFee = subtotal > 0 ? 150 : 0; // Flat optimized regional delivery fee in KES
   const totalAmount = subtotal + deliveryFee;
 
-  // Primary wholesaler determination (majority supplier)
-  const primaryWholesaler = cart[0]?.supplierProduct.wholesalerName || 'Eastleigh Mega Wholesale Depot';
-  const primaryWholesalerLocationId = cart[0]?.supplierProduct.wholesalerLocationId || 'ws_eastleigh';
+  // Primary wholesaler determination dynamically computed from cart items
+  const primaryWholesalerLocationId = 
+    cart[0]?.supplierProduct?.wholesalerLocationId || 
+    (WHOLESALERS.length > 0 ? WHOLESALERS[0].id : 'ws_default');
+  const primaryWholesaler = 
+    cart[0]?.supplierProduct?.wholesalerName || 
+    (WHOLESALERS.length > 0 ? WHOLESALERS[0].name : 'Regional Wholesale Depot');
 
   const orderItems: OrderItem[] = cart.map((item) => ({
     productId: item.product.id,
@@ -378,12 +386,17 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                   {activeUpsell && (
                     <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded p-3 text-xs space-y-2 shadow-2xs">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-amber-900 flex items-center space-x-1 uppercase tracking-wider">
-                          <Star className="w-3 h-3 fill-amber-600 text-amber-600" />
-                          <span>Manufacturer Trade Deal • {activeUpsell.sponsorName}</span>
+                        <span className="text-[10px] font-bold text-amber-950 flex items-center space-x-1">
+                          <Star className="w-2.5 h-2.5 fill-amber-700 text-amber-700" />
+                          <span>Sponsored Deal • {activeUpsell.sponsorName}</span>
                         </span>
-                        <span className="bg-amber-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded font-mono">
-                          -KES {activeUpsell.discountKES} OFF
+                        <span className="bg-amber-600 text-white px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap inline-flex items-center space-x-1.5 shadow-2xs shrink-0">
+                          <span className="line-through text-amber-200">
+                            KES {upsellOriginalPrice.toLocaleString()}
+                          </span>
+                          <span className="font-bold text-white">
+                            KES {upsellDiscountedPrice.toLocaleString()}
+                          </span>
                         </span>
                       </div>
 
@@ -522,15 +535,16 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs space-y-2 text-left">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Pickup OTP (for Wholesaler):</span>
-                  <span className="font-mono font-semibold text-slate-900">{createdOrder.pickupOtp}</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600 font-medium">Your Delivery Confirmation OTP:</span>
+                  <span className="font-mono font-bold text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded">
+                    {createdOrder.deliveryOtp}
+                  </span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Delivery Confirmation OTP:</span>
-                  <span className="font-mono font-semibold text-emerald-700">{createdOrder.deliveryOtp}</span>
-                </div>
-                <div className="flex justify-between">
+                <p className="text-[11px] text-slate-500">
+                  Give this 4-digit PIN to the motorcycle rider when your goods arrive at the duka.
+                </p>
+                <div className="flex justify-between border-t border-slate-200 pt-2 text-[11px]">
                   <span className="text-slate-500">Estimated Delivery:</span>
                   <span className="font-medium text-slate-900">~{createdOrder.estimatedDeliveryMins} mins</span>
                 </div>
@@ -559,12 +573,18 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
             </>
           )}
 
-          {paymentStep === 'SUCCESS' && (
+          {paymentStep === 'SUCCESS' && createdOrder && (
             <button
-              onClick={onClose}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-1.5 rounded text-xs font-semibold transition-colors cursor-pointer"
+              onClick={() => {
+                onClose();
+                if (onTrackOrder) {
+                  onTrackOrder(createdOrder);
+                }
+              }}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white py-2 rounded text-xs font-semibold transition-colors cursor-pointer flex items-center justify-center space-x-1.5 shadow-2xs"
             >
-              Close & View Live Order Run
+              <Bike className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Track Live Delivery ({createdOrder.id})</span>
             </button>
           )}
         </div>
