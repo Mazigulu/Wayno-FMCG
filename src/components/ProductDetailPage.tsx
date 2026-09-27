@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -36,6 +36,28 @@ export const ProductDetailPage: React.FC = () => {
     addToCart,
     setIsCartOpen,
   } = useWayno();
+
+  // Guarantee that all product pages always load from the very top
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [productId]);
+
+  useEffect(() => {
+    // Secondary enforcement after paint & potential asset layout shifts
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    const timer = setTimeout(() => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }, 30);
+
+    return () => clearTimeout(timer);
+  }, [productId]);
 
   // Find target product
   const product = useMemo(() => {

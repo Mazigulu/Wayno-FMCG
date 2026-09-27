@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Header } from './components/Header';
 import { RetailerApp } from './components/RetailerApp';
 import { ProductDetailPage } from './components/ProductDetailPage';
@@ -9,6 +9,33 @@ import { AdminOperationsHub } from './components/AdminOperationsHub';
 import { CartCheckoutModal } from './components/CartCheckoutModal';
 import { OrderTrackingModal } from './components/OrderTrackingModal';
 import { WaynoProvider, useWayno } from './context/WaynoContext';
+
+// Disable default browser scroll restoration so SPA route transitions start fresh from top
+if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
+  window.history.scrollRestoration = 'manual';
+}
+
+function ScrollToTop() {
+  const { pathname, search } = useLocation();
+
+  useLayoutEffect(() => {
+    // Instant reset on route change before browser paint
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+
+    // Follow-up on next frame to prevent layout shift or browser restoration override
+    const rafId = requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    });
+
+    return () => cancelAnimationFrame(rafId);
+  }, [pathname, search]);
+
+  return null;
+}
 
 function AppContent() {
   const {
@@ -217,6 +244,7 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <WaynoProvider>
         <AppContent />
       </WaynoProvider>
