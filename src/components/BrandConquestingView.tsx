@@ -20,6 +20,7 @@ import {
 import { PRODUCTS } from '../data/mockData';
 import { executeWaynoSearch } from '../services/searchEngine';
 import { PromotionalPlacement } from '../types/promotions';
+import { SafeImage } from './common/SafeImage';
 
 interface BrandConquestingViewProps {
   onSelectCampaign?: (placement: PromotionalPlacement) => void;
@@ -237,11 +238,12 @@ export const BrandConquestingView: React.FC<BrandConquestingViewProps> = ({
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded border border-rose-200">
               <div className="flex items-center space-x-3">
-                <img
+                <SafeImage
                   src={interceptedItem.product.image}
                   alt={interceptedItem.product.name}
+                  category={interceptedItem.product.internalCategory}
+                  productName={interceptedItem.product.name}
                   className="w-12 h-12 rounded object-cover border border-slate-200"
-                  referrerPolicy="no-referrer"
                 />
                 <div>
                   <div className="font-bold text-slate-900 text-xs">

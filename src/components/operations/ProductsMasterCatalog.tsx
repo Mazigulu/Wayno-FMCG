@@ -34,6 +34,7 @@ import {
 import { Product, SupplierProduct, ProductSearchScope, SupplyNode, SupplyNodeLevel } from '../../types/wayno';
 import { useWayno } from '../../context/WaynoContext';
 import { SUPPLY_NODES, geoEngine } from '../../services/hierarchicalGeofenceEngine';
+import { SafeImage } from '../common/SafeImage';
 
 const KENYAN_FMCG_IMAGE_PRESETS = [
   { name: 'Maize Flour', url: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400&auto=format&fit=crop&q=80' },
@@ -442,11 +443,12 @@ export const ProductsMasterCatalog: React.FC = () => {
                   >
                     <td className="py-3 px-3">
                       <div className="flex items-center space-x-2.5">
-                        <img 
+                        <SafeImage 
                           src={product.image} 
                           alt={product.name} 
+                          category={product.internalCategory}
+                          productName={product.name}
                           className="w-10 h-10 rounded object-cover border border-slate-200 shrink-0 bg-slate-100"
-                          referrerPolicy="no-referrer"
                         />
                         <div>
                           <span className="font-semibold text-slate-900 block line-clamp-1 max-w-xs">
@@ -842,11 +844,10 @@ export const ProductsMasterCatalog: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
                   <div className="sm:col-span-3 flex flex-col items-center">
-                    <img 
+                    <SafeImage 
                       src={formImage} 
                       alt="Product preview" 
                       className="w-20 h-20 rounded border border-slate-200 object-cover bg-slate-100"
-                      referrerPolicy="no-referrer"
                     />
                     <span className="text-[10px] text-slate-400 mt-1">Live Preview</span>
                   </div>
@@ -1346,11 +1347,12 @@ export const ProductsMasterCatalog: React.FC = () => {
           <div className="bg-white rounded-lg border border-slate-200 shadow-xl max-w-2xl w-full overflow-hidden max-h-[90vh] flex flex-col">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center space-x-2.5">
-                <img 
+                <SafeImage 
                   src={selectedProduct.image} 
                   alt={selectedProduct.name} 
+                  category={selectedProduct.internalCategory}
+                  productName={selectedProduct.name}
                   className="w-8 h-8 rounded object-cover border border-slate-200"
-                  referrerPolicy="no-referrer"
                 />
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">{selectedProduct.name}</h3>
@@ -1365,7 +1367,10 @@ export const ProductsMasterCatalog: React.FC = () => {
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+            <div 
+              ref={(el) => { if (el) el.scrollTop = 0; }}
+              className="p-5 overflow-y-auto space-y-4 text-xs"
+            >
               <div className="bg-slate-50 rounded border border-slate-200 p-3 space-y-2">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Admin Specifications</span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono">

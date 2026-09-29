@@ -142,7 +142,7 @@ export const INITIAL_PROMOTIONAL_PLACEMENTS: PromotionalPlacement[] = [
     status: 'ACTIVE',
     startDate: '2026-09-05',
     endDate: '2026-09-18',
-    imageUrl: 'https://images.unsplash.com/photo-1622484216800-47b1c4e7436b?w=600&auto=format&fit=crop&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1581441363689-1f3c3c414635?w=600&auto=format&fit=crop&q=80',
     priority: 3,
     // Targeted configuration
     objective: 'DEPOT_CLEARANCE',
@@ -236,7 +236,7 @@ export const INITIAL_PROMOTIONAL_PLACEMENTS: PromotionalPlacement[] = [
     status: 'ACTIVE',
     startDate: '2026-09-04',
     endDate: '2026-09-25',
-    imageUrl: 'https://images.unsplash.com/photo-1607006314148-39a04a3e74e4?w=600&auto=format&fit=crop&q=80',
+    imageUrl: 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=600&auto=format&fit=crop&q=80',
     priority: 2,
     // Targeted configuration
     objective: 'GEO_ZONE_SURGE',

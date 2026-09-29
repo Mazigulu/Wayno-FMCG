@@ -34,6 +34,7 @@ import { WAYNO_SEARCH_REQUIREMENTS } from '../data/searchRequirementsSpec';
 import { SEARCH_BENCHMARK_SUITE, AutomatedTestCase } from '../data/searchBenchmarkSuite';
 import { INITIAL_SHOPS, WHOLESALERS } from '../data/mockData';
 import { SearchExecutionResultEnhanced, AutocompleteSuggestion } from '../types/search';
+import { SafeImage } from './common/SafeImage';
 
 export const SearchBenchmark: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'inspector' | 'specifications' | 'automated_suite' | 'analytics'>('inspector');
@@ -571,9 +572,11 @@ export const SearchBenchmark: React.FC = () => {
                     {searchResult.fallback.closestSubstitutes.map((item) => (
                       <div key={item.product.id} className="bg-white border border-slate-200 rounded p-3 space-y-2">
                         <div className="flex items-center space-x-2">
-                          <img
+                          <SafeImage
                             src={item.product.image}
                             alt={item.product.name}
+                            category={item.product.internalCategory}
+                            productName={item.product.name}
                             className="w-10 h-10 object-cover rounded border border-slate-100"
                           />
                           <div className="min-w-0">
@@ -609,9 +612,11 @@ export const SearchBenchmark: React.FC = () => {
                         <div className="flex items-center justify-center w-7 h-7 rounded bg-slate-900 text-white font-bold text-xs shrink-0">
                           #{idx + 1}
                         </div>
-                        <img
+                        <SafeImage
                           src={item.product.image}
                           alt={item.product.name}
+                          category={item.product.internalCategory}
+                          productName={item.product.name}
                           className="w-12 h-12 object-cover rounded border border-slate-200 shrink-0"
                         />
                         <div className="space-y-0.5">

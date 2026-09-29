@@ -10,6 +10,7 @@ import {
   RecommendedProductItem 
 } from '../types/recommendation';
 import { Product, SupplierProduct, RetailerShop } from '../types/wayno';
+import { SafeImage } from './common/SafeImage';
 
 interface RetailerRecommendationTrayProps {
   recommendationResult: RecommendationExecutionResult | null;
@@ -114,14 +115,25 @@ export const RetailerRecommendationTray: React.FC<RetailerRecommendationTrayProp
                 </div>
 
                 <div 
-                  onClick={() => navigate(`/product/${product.id}`)}
+                  onClick={() => {
+                    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                    document.documentElement.scrollTop = 0;
+                    document.body.scrollTop = 0;
+                    navigate(`/product/${product.id}`, {
+                      state: {
+                        fromSearch: Boolean(searchQuery && searchQuery.trim()),
+                        searchQuery: searchQuery ? searchQuery.trim() : '',
+                      }
+                    });
+                  }}
                   className="flex items-center space-x-3 cursor-pointer group"
                 >
                   <div className="relative w-14 h-14 rounded bg-slate-50 border border-slate-100 overflow-hidden shrink-0 group-hover:opacity-90">
-                    <img
+                    <SafeImage
                       src={product.image}
                       alt={product.name}
-                      referrerPolicy="no-referrer"
+                      category={product.internalCategory}
+                      productName={product.name}
                       className="w-full h-full object-cover transition-transform group-hover:scale-105"
                     />
                   </div>

@@ -28,6 +28,7 @@ import {
   RecommendationSignalType 
 } from '../types/recommendation';
 import { RetailerShop, Product, SupplierProduct } from '../types/wayno';
+import { SafeImage } from './common/SafeImage';
 
 interface RecommendationModelInspectorProps {
   isOpen: boolean;
@@ -323,10 +324,11 @@ export const RecommendationModelInspector: React.FC<RecommendationModelInspector
                 <>
                   <div className="flex items-start justify-between border-b border-slate-200 pb-3">
                     <div className="flex items-center space-x-3">
-                      <img 
+                      <SafeImage 
                         src={selectedItem.product.image} 
                         alt={selectedItem.product.name}
-                        referrerPolicy="no-referrer"
+                        category={selectedItem.product.internalCategory}
+                        productName={selectedItem.product.name}
                         className="w-12 h-12 object-cover rounded border border-slate-200 bg-white" 
                       />
                       <div>

@@ -18,11 +18,16 @@ import {
   Calendar,
   Check,
   User,
-  Radio
+  Radio,
+  Zap,
+  Wallet,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Rider, Order, DeliveryExceptionCode } from '../types/wayno';
 import { INITIAL_RIDERS, WHOLESALERS } from '../data/mockData';
 import { calculateDistanceKm } from '../services/searchEngine';
+import { useWayno } from '../context/WaynoContext';
+import { calculateOrderRevenueSplit, SettlementPayoutRecord } from '../services/revenueSharingService';
 
 export type RiderPage = 'active-run' | 'available-jobs' | 'earnings';
 
@@ -44,12 +49,23 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
   onUpdateOrderStatus,
   onCaptureDeliveryException,
 }) => {
+  const { 
+    riderWallets, 
+    settlementPayouts, 
+    handleRiderWithdrawal 
+  } = useWayno();
+
   const [currentPage, setCurrentPage] = useState<RiderPage>('active-run');
   const [riders, setRiders] = useState<Rider[]>(INITIAL_RIDERS);
   const [activeRiderId, setActiveRiderId] = useState<string>(INITIAL_RIDERS[0].id);
   const [pickupCodeInput, setPickupCodeInput] = useState('');
   const [deliveryCodeInput, setDeliveryCodeInput] = useState('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
+
+  // Instant Cashout Modal State
+  const [isCashoutModalOpen, setIsCashoutModalOpen] = useState(false);
+  const [cashoutAmount, setCashoutAmount] = useState<number>(0);
+  const [cashoutFeedback, setCashoutFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
   // Delivery Exception State (FR-FUL-007)
   const [isExceptionModalOpen, setIsExceptionModalOpen] = useState(false);
@@ -529,94 +545,339 @@ export const RiderConsole: React.FC<RiderConsoleProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* PAGE 3: EARNINGS & TRIP HISTORY                                           */}
+      {/* PAGE 3: EARNINGS & TRIP HISTORY (SAFESETTLE RIDER WALLET)                 */}
       {/* ========================================================================= */}
-      {currentPage === 'earnings' && (
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Rider Earnings & Trip Ledger</h2>
-            <p className="text-xs text-slate-500">
-              Completed FMCG delivery runs, M-Pesa B2C instant payouts, and rider telemetry credentials.
-            </p>
+      {currentPage === 'earnings' && (() => {
+        const wallet = riderWallets[activeRider.id] || {
+          riderId: activeRider.id,
+          riderName: activeRider.name,
+          riderPhone: activeRider.phone,
+          availableBalanceKES: 2450,
+          escrowLockedBalanceKES: 255,
+          totalLifetimeEarnedKES: 68400,
+          totalWithdrawnKES: 65950,
+          completedRunsCount: activeRider.completedTrips,
+          lastCashoutAt: 'Today at 08:30 EAT',
+        };
+
+        const riderPayouts = settlementPayouts.filter(
+          (p) => p.recipientId === activeRider.id
+        );
+
+        const handleExecuteCashout = (e: React.FormEvent) => {
+          e.preventDefault();
+          if (cashoutAmount < 50) return;
+          const res = handleRiderWithdrawal(activeRider.id, cashoutAmount);
+          setCashoutFeedback(res);
+          if (res.success) {
+            setTimeout(() => {
+              setIsCashoutModalOpen(false);
+              setCashoutFeedback(null);
+            }, 2500);
+          }
+        };
+
+        return (
+          <div className="space-y-4">
+            {/* Header & Sub-title */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-md p-4">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <Wallet className="w-5 h-5 text-emerald-600" />
+                  <h2 className="text-sm font-bold text-slate-900">
+                    SafeSettle Rider Wallet & Instant M-Pesa Cashout
+                  </h2>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  85% of delivery fare + heavy cargo bonuses credited to your wallet the moment retailer inputs their Delivery OTP.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCashoutAmount(wallet.availableBalanceKES);
+                  setCashoutFeedback(null);
+                  setIsCashoutModalOpen(true);
+                }}
+                disabled={wallet.availableBalanceKES < 50}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold px-4 py-2 rounded text-xs flex items-center space-x-1.5 transition-colors shadow-2xs cursor-pointer shrink-0"
+              >
+                <Zap className="w-3.5 h-3.5 fill-white" />
+                <span>⚡ Tuma Kwa M-Pesa (Instant B2C)</span>
+              </button>
+            </div>
+
+            {/* Earnings Stats Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Available to Cashout */}
+              <div className="bg-white border border-slate-200 rounded-md p-4 space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 font-semibold uppercase">
+                  <span>Available Balance</span>
+                  <span className="text-[10px] bg-emerald-50 text-emerald-800 font-mono px-1.5 py-0.2 rounded border border-emerald-200 font-bold">
+                    INSTANT CASHOUT
+                  </span>
+                </div>
+                <div className="text-2xl font-bold font-mono text-emerald-700">
+                  KES {wallet.availableBalanceKES.toLocaleString()}
+                </div>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Direct to {activeRider.phone}
+                </span>
+              </div>
+
+              {/* In Escrow */}
+              <div className="bg-white border border-slate-200 rounded-md p-4 space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 font-semibold uppercase">
+                  <span>Locked in Escrow</span>
+                  <span className="text-[10px] bg-amber-50 text-amber-800 font-mono px-1.5 py-0.2 rounded border border-amber-200 font-bold">
+                    IN-TRANSIT RUNS
+                  </span>
+                </div>
+                <div className="text-2xl font-bold font-mono text-amber-700">
+                  KES {wallet.escrowLockedBalanceKES.toLocaleString()}
+                </div>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Releases when duka provides OTP
+                </span>
+              </div>
+
+              {/* Lifetime Earnings */}
+              <div className="bg-white border border-slate-200 rounded-md p-4 space-y-1">
+                <div className="flex items-center justify-between text-[10px] text-slate-500 font-semibold uppercase">
+                  <span>Total Lifetime Earnings</span>
+                  <span className="text-[10px] text-slate-400 font-mono">ALL-TIME</span>
+                </div>
+                <div className="text-2xl font-bold font-mono text-slate-900">
+                  KES {wallet.totalLifetimeEarnedKES.toLocaleString()}
+                </div>
+                <span className="text-[11px] text-emerald-700 mt-1 block font-medium">
+                  {wallet.completedRunsCount} completed corridor drops
+                </span>
+              </div>
+            </div>
+
+            {/* Trip History Table */}
+            <div className="bg-white border border-slate-200 rounded-md overflow-hidden shadow-2xs">
+              <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Delivered Runs & Escrow Clearing Log
+                </h3>
+                <span className="text-[11px] text-slate-500 font-mono">85% Rider Fare Split</span>
+              </div>
+              <table className="w-full text-left text-xs text-slate-900">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase">
+                  <tr>
+                    <th className="py-2.5 px-3.5">Run ID</th>
+                    <th className="py-2.5 px-3.5">Wholesale Hub</th>
+                    <th className="py-2.5 px-3.5">Duka Destination</th>
+                    <th className="py-2.5 px-3.5 text-right">Delivery Fare</th>
+                    <th className="py-2.5 px-3.5 text-right">Your Take (85%)</th>
+                    <th className="py-2.5 px-3.5 text-center">Escrow Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                  <tr className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-3.5 font-bold text-slate-900">RUN-88120</td>
+                    <td className="py-2.5 px-3.5 font-sans text-slate-700">Eastleigh Mega Wholesale Depot</td>
+                    <td className="py-2.5 px-3.5 font-sans text-slate-800 font-medium">Sarah's Baraka Duka</td>
+                    <td className="py-2.5 px-3.5 text-right text-slate-500">KES 180</td>
+                    <td className="py-2.5 px-3.5 text-right font-bold text-emerald-800">KES 153</td>
+                    <td className="py-2.5 px-3.5 text-center font-sans">
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        SETTLED
+                      </span>
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-slate-50 transition-colors">
+                    <td className="py-2.5 px-3.5 font-bold text-slate-900">RUN-77341</td>
+                    <td className="py-2.5 px-3.5 font-sans text-slate-700">Industrial Area Direct Supply Hub</td>
+                    <td className="py-2.5 px-3.5 font-sans text-slate-800 font-medium">Kamau General Store</td>
+                    <td className="py-2.5 px-3.5 text-right text-slate-500">KES 220</td>
+                    <td className="py-2.5 px-3.5 text-right font-bold text-emerald-800">KES 187</td>
+                    <td className="py-2.5 px-3.5 text-center font-sans">
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        SETTLED
+                      </span>
+                    </td>
+                  </tr>
+                  {assignedOrder && (
+                    <tr className="hover:bg-amber-50/50 transition-colors bg-amber-50/30">
+                      <td className="py-2.5 px-3.5 font-bold text-amber-900">{assignedOrder.id}</td>
+                      <td className="py-2.5 px-3.5 font-sans text-slate-700">{assignedOrder.wholesalerName}</td>
+                      <td className="py-2.5 px-3.5 font-sans text-slate-800 font-medium">{assignedOrder.shopName}</td>
+                      <td className="py-2.5 px-3.5 text-right text-slate-500">KES {assignedOrder.deliveryFee}</td>
+                      <td className="py-2.5 px-3.5 text-right font-bold text-amber-900">
+                        KES {Math.round(assignedOrder.deliveryFee * 0.85)}
+                      </td>
+                      <td className="py-2.5 px-3.5 text-center font-sans">
+                        <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                          IN ESCROW
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* M-Pesa Payout Disbursements Table */}
+            <div className="bg-white border border-slate-200 rounded-md overflow-hidden shadow-2xs">
+              <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Phone className="w-4 h-4 text-emerald-600" />
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    M-Pesa B2C Cashout History
+                  </h3>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">Safaricom Daraja B2C</span>
+              </div>
+              {riderPayouts.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500">
+                  No cashout disbursements requested yet today.
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs text-slate-900">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase">
+                    <tr>
+                      <th className="py-2.5 px-3.5">Disbursement ID</th>
+                      <th className="py-2.5 px-3.5">Recipient Line</th>
+                      <th className="py-2.5 px-3.5">M-Pesa Receipt Ref</th>
+                      <th className="py-2.5 px-3.5 text-right">Amount Sent</th>
+                      <th className="py-2.5 px-3.5 text-center">Status</th>
+                      <th className="py-2.5 px-3.5">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                    {riderPayouts.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-2.5 px-3.5 font-bold text-slate-900">{p.id}</td>
+                        <td className="py-2.5 px-3.5 font-sans text-slate-700">{p.destinationRef}</td>
+                        <td className="py-2.5 px-3.5 font-bold text-emerald-700">{p.referenceNumber}</td>
+                        <td className="py-2.5 px-3.5 text-right font-bold text-emerald-800">
+                          KES {p.amountKES.toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3.5 text-center font-sans">
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            {p.status}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3.5 font-sans text-[11px] text-slate-500">
+                          {new Date(p.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Instant Cashout Modal */}
+            {isCashoutModalOpen && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/50 animate-in fade-in">
+                <div className="bg-white border border-slate-300 rounded-lg w-full max-w-md p-5 shadow-2xl space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                    <div className="flex items-center space-x-2">
+                      <Zap className="w-4 h-4 text-emerald-600" />
+                      <h3 className="font-bold text-sm text-slate-900">
+                        ⚡ Instant M-Pesa Cashout (Daraja B2C)
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsCashoutModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xs font-mono cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {cashoutFeedback ? (
+                    <div className={`p-4 rounded-lg text-xs space-y-2 ${cashoutFeedback.success ? 'bg-emerald-50 text-emerald-950 border border-emerald-200' : 'bg-rose-50 text-rose-950 border border-rose-200'}`}>
+                      <div className="flex items-center space-x-2 font-bold">
+                        {cashoutFeedback.success ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
+                        <span>{cashoutFeedback.success ? 'M-Pesa Dispatched' : 'Cashout Error'}</span>
+                      </div>
+                      <p className="leading-relaxed">{cashoutFeedback.message}</p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleExecuteCashout} className="space-y-4 text-xs">
+                      <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200 space-y-1">
+                        <span className="text-[10px] text-emerald-800 uppercase font-bold block">Recipient Phone Line</span>
+                        <div className="font-bold text-emerald-950 text-sm font-mono">
+                          {wallet.riderPhone}
+                        </div>
+                        <div className="text-[10px] text-emerald-700">
+                          Instant B2C Disbursement · Zero Carrier Deduction
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-semibold text-slate-700">
+                            Cashout Amount (KES):
+                          </label>
+                          <span className="text-[11px] text-slate-500 font-mono">
+                            Available: KES {wallet.availableBalanceKES.toLocaleString()}
+                          </span>
+                        </div>
+                        <input
+                          type="number"
+                          min={50}
+                          max={wallet.availableBalanceKES}
+                          value={cashoutAmount}
+                          onChange={(e) => setCashoutAmount(Number(e.target.value))}
+                          className="w-full bg-white border border-slate-300 rounded px-3 py-2 text-sm font-mono font-bold focus:border-slate-800 focus:outline-none"
+                          required
+                        />
+                        <div className="flex items-center space-x-1.5 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => setCashoutAmount(Math.min(wallet.availableBalanceKES, 500))}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-medium"
+                          >
+                            KES 500
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCashoutAmount(Math.min(wallet.availableBalanceKES, 1000))}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-medium"
+                          >
+                            KES 1,000
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setCashoutAmount(wallet.availableBalanceKES)}
+                            className="px-2.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 rounded text-[10px] font-bold"
+                          >
+                            Max (KES {wallet.availableBalanceKES.toLocaleString()})
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setIsCashoutModalOpen(false)}
+                          className="px-3 py-1.5 border border-slate-200 text-slate-700 rounded hover:bg-slate-50 cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-1.5 rounded cursor-pointer transition-colors shadow-2xs"
+                        >
+                          Confirm & Tuma KES {cashoutAmount.toLocaleString()}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-
-          {/* Earnings Stats Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="bg-white border border-slate-200 rounded-md p-4">
-              <span className="text-[10px] text-slate-400 font-medium uppercase block">Today's Delivery Payouts</span>
-              <span className="text-lg font-bold text-slate-900 font-mono mt-1 block">
-                KES {todayEarnings.toLocaleString()}
-              </span>
-              <span className="text-[11px] text-emerald-700 mt-1 block font-medium">
-                {activeRider.completedTrips} trips @ KES 150/drop
-              </span>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-md p-4">
-              <span className="text-[10px] text-slate-400 font-medium uppercase block">M-Pesa B2C Settlement</span>
-              <span className="text-lg font-bold text-slate-900 font-mono mt-1 block">
-                Auto Instant
-              </span>
-              <span className="text-[11px] text-slate-500 mt-1 block">Direct to {activeRider.phone}</span>
-            </div>
-
-            <div className="bg-white border border-slate-200 rounded-md p-4">
-              <span className="text-[10px] text-slate-400 font-medium uppercase block">Safety & SLA Rating</span>
-              <span className="text-lg font-bold text-slate-900 font-mono mt-1 block">
-                ★ {activeRider.rating} / 5.0
-              </span>
-              <span className="text-[11px] text-emerald-700 mt-1 block font-medium">Verified Helmet & Box</span>
-            </div>
-          </div>
-
-          {/* Trip History Table */}
-          <div className="bg-white border border-slate-200 rounded-md overflow-hidden">
-            <div className="p-3 bg-slate-50 border-b border-slate-200">
-              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Delivered Runs Log
-              </h3>
-            </div>
-            <table className="w-full text-left text-xs text-slate-900">
-              <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 font-semibold uppercase">
-                <tr>
-                  <th className="py-2.5 px-3.5">Run ID</th>
-                  <th className="py-2.5 px-3.5">Wholesale Hub</th>
-                  <th className="py-2.5 px-3.5">Duka Destination</th>
-                  <th className="py-2.5 px-3.5">FMCG Packs</th>
-                  <th className="py-2.5 px-3.5">Payout</th>
-                  <th className="py-2.5 px-3.5">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                <tr className="hover:bg-slate-50 transition-colors">
-                  <td className="py-2.5 px-3.5 font-mono font-bold text-slate-900">RUN-88120</td>
-                  <td className="py-2.5 px-3.5 text-slate-700">Eastleigh Mega Wholesale Depot</td>
-                  <td className="py-2.5 px-3.5 text-slate-800 font-medium">Sarah's Baraka Duka</td>
-                  <td className="py-2.5 px-3.5 text-slate-500">3 bulk packs</td>
-                  <td className="py-2.5 px-3.5 font-mono font-bold text-slate-900">KES 150</td>
-                  <td className="py-2.5 px-3.5">
-                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      COMPLETED
-                    </span>
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-50 transition-colors">
-                  <td className="py-2.5 px-3.5 font-mono font-bold text-slate-900">RUN-77341</td>
-                  <td className="py-2.5 px-3.5 text-slate-700">Industrial Area Direct Supply Hub</td>
-                  <td className="py-2.5 px-3.5 text-slate-800 font-medium">Kamau General Store</td>
-                  <td className="py-2.5 px-3.5 text-slate-500">2 bulk packs</td>
-                  <td className="py-2.5 px-3.5 font-mono font-bold text-slate-900">KES 150</td>
-                  <td className="py-2.5 px-3.5">
-                    <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      COMPLETED
-                    </span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Delivery Exception Modal (FR-FUL-007) */}
       {isExceptionModalOpen && assignedOrder && (

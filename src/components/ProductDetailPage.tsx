@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import {
   ArrowLeft,
   ShieldCheck,
@@ -24,10 +24,12 @@ import { useWayno } from '../context/WaynoContext';
 import { Product, SupplierProduct } from '../types/wayno';
 import { INITIAL_PROMOTIONAL_PLACEMENTS } from '../data/promotionsData';
 import { WHOLESALERS } from '../data/mockData';
+import { SafeImage } from './common/SafeImage';
 
 export const ProductDetailPage: React.FC = () => {
   const { productId } = useParams<{ productId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const {
     products,
     supplierProducts,
@@ -36,6 +38,23 @@ export const ProductDetailPage: React.FC = () => {
     addToCart,
     setIsCartOpen,
   } = useWayno();
+
+  // Detect whether retailer arrived from an active search query
+  const locationState = location.state as { fromSearch?: boolean; searchQuery?: string; category?: string } | null;
+  const searchedQuery = locationState?.searchQuery?.trim() || '';
+  const hasSearch = Boolean(locationState?.fromSearch && searchedQuery);
+
+  const handleBackToCatalogOrSearch = () => {
+    if (hasSearch && searchedQuery) {
+      // Returns back to the search page with the exact searched query and products
+      navigate(`/retailer?q=${encodeURIComponent(searchedQuery)}`, {
+        state: { searchQuery: searchedQuery, fromSearch: true }
+      });
+    } else {
+      // Returns back to the clean home wholesale catalog
+      navigate('/retailer');
+    }
+  };
 
   // Guarantee that all product pages always load from the very top
   useLayoutEffect(() => {
@@ -208,13 +227,14 @@ export const ProductDetailPage: React.FC = () => {
         <p className="text-sm text-slate-600">
           This product is currently not cataloged in your active corridor territory.
         </p>
-        <Link
-          to="/retailer"
-          className="inline-flex items-center space-x-2 bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors"
+        <button
+          type="button"
+          onClick={handleBackToCatalogOrSearch}
+          className="inline-flex items-center space-x-2 bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Return to Wholesale Catalog</span>
-        </Link>
+          <span>{hasSearch ? `Return to Search ("${searchedQuery}")` : 'Return to Wholesale Catalog'}</span>
+        </button>
       </div>
     );
   }
@@ -226,13 +246,27 @@ export const ProductDetailPage: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
           {/* Breadcrumb Navigation */}
           <div className="flex items-center space-x-2 text-slate-500 flex-wrap">
-            <Link
-              to="/retailer"
-              className="text-slate-900 hover:text-slate-700 font-semibold flex items-center space-x-1"
+            <button
+              type="button"
+              onClick={handleBackToCatalogOrSearch}
+              className="text-slate-900 hover:text-blue-600 font-semibold flex items-center space-x-1 cursor-pointer transition-colors"
+              title={hasSearch ? `Return to search results for "${searchedQuery}"` : 'Return to Wholesale Catalog'}
             >
               <ArrowLeft className="w-3.5 h-3.5 mr-0.5" />
-              <span>Catalog</span>
-            </Link>
+              <span>{hasSearch ? `Catalog (Search: "${searchedQuery}")` : 'Catalog'}</span>
+            </button>
+            {hasSearch && (
+              <>
+                <span className="text-slate-300">/</span>
+                <Link
+                  to="/retailer"
+                  className="text-slate-500 hover:text-slate-800 transition-colors"
+                  title="Return to Home Catalog"
+                >
+                  Home
+                </Link>
+              </>
+            )}
             <span className="text-slate-300">/</span>
             <span className="text-slate-600">{product.internalCategory}</span>
             <span className="text-slate-300">/</span>
@@ -269,10 +303,11 @@ export const ProductDetailPage: React.FC = () => {
           <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-4">
             {/* Packaging Image Stage */}
             <div className="relative aspect-4/3 w-full bg-slate-50 rounded-lg overflow-hidden border border-slate-100 flex items-center justify-center">
-              <img
+              <SafeImage
                 src={inspectionViews[selectedViewIndex]?.imageUrl || product.image}
                 alt={product.name}
-                referrerPolicy="no-referrer"
+                category={product.internalCategory}
+                productName={product.name}
                 className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
               />
 
@@ -659,15 +694,26 @@ export const ProductDetailPage: React.FC = () => {
               return (
                 <div
                   key={alt.id}
-                  onClick={() => navigate(`/product/${alt.id}`)}
+                  onClick={() => {
+                    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                    document.documentElement.scrollTop = 0;
+                    document.body.scrollTop = 0;
+                    navigate(`/product/${alt.id}`, {
+                      state: {
+                        fromSearch: hasSearch,
+                        searchQuery: searchedQuery,
+                      }
+                    });
+                  }}
                   className="bg-white border border-slate-200 rounded-lg p-3 hover:border-slate-400 hover:shadow-2xs transition-all cursor-pointer flex flex-col justify-between"
                 >
                   <div className="space-y-2">
                     <div className="aspect-4/3 w-full bg-slate-50 rounded overflow-hidden border border-slate-100 flex items-center justify-center">
-                      <img
+                      <SafeImage
                         src={alt.image}
                         alt={alt.name}
-                        referrerPolicy="no-referrer"
+                        category={alt.internalCategory}
+                        productName={alt.name}
                         className="w-full h-full object-cover"
                       />
                     </div>

@@ -14,10 +14,24 @@ import {
   DeliveryExceptionCode,
   DeliveryException
 } from '../types/wayno';
-import { INITIAL_SHOPS, INITIAL_RIDERS, PRODUCTS, SUPPLIER_PRODUCTS } from '../data/mockData';
+import { 
+  INITIAL_SHOPS, 
+  INITIAL_RIDERS, 
+  PRODUCTS, 
+  SUPPLIER_PRODUCTS 
+} from '../data/mockData';
 import { generateEvent } from '../services/orderEngine';
 import { paymentService } from '../services/paymentService';
 import { recordOrderPromotionalConversions } from '../services/searchEngine';
+import { 
+  WholesalerWallet, 
+  RiderWallet, 
+  SettlementPayoutRecord, 
+  calculateOrderRevenueSplit, 
+  INITIAL_WHOLESALER_WALLETS, 
+  INITIAL_RIDER_WALLETS, 
+  INITIAL_SETTLEMENT_HISTORY 
+} from '../services/revenueSharingService';
 
 interface WaynoContextType {
   orders: Order[];
@@ -32,6 +46,20 @@ interface WaynoContextType {
   trackingOrder: Order | null;
   activeOrdersCount: number;
   cartCount: number;
+
+  // Wayno SafeSettle Wallets & Escrow
+  wholesalerWallets: Record<string, WholesalerWallet>;
+  riderWallets: Record<string, RiderWallet>;
+  settlementPayouts: SettlementPayoutRecord[];
+  handleWholesalerWithdrawal: (
+    wholesalerId: string, 
+    amountKES: number, 
+    note?: string
+  ) => { success: boolean; message: string; record?: SettlementPayoutRecord };
+  handleRiderWithdrawal: (
+    riderId: string, 
+    amountKES: number
+  ) => { success: boolean; message: string; record?: SettlementPayoutRecord };
 
   // Section 13: Product Management & Wholesaler Adoption
   products: Product[];
@@ -85,6 +113,11 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [trackingOrder, setTrackingOrder] = useState<Order | null>(null);
+
+  // Wayno SafeSettle Wallets & Escrow State
+  const [wholesalerWallets, setWholesalerWallets] = useState<Record<string, WholesalerWallet>>(INITIAL_WHOLESALER_WALLETS);
+  const [riderWallets, setRiderWallets] = useState<Record<string, RiderWallet>>(INITIAL_RIDER_WALLETS);
+  const [settlementPayouts, setSettlementPayouts] = useState<SettlementPayoutRecord[]>(INITIAL_SETTLEMENT_HISTORY);
 
   // Section 13: Product Management state
   const [products, setProducts] = useState<Product[]>(PRODUCTS);
@@ -511,6 +544,36 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     logEvent('PAYMENT_COMPLETED', { orderId: newOrder.id, provider: 'M-Pesa' });
     logEvent('SUPPLIER_ORDERED', { orderId: newOrder.id, wholesalerId: newOrder.wholesalerLocationId });
 
+    // Wayno SafeSettle: Lock inventory and transit fee in escrow
+    const split = calculateOrderRevenueSplit(newOrder);
+    setWholesalerWallets((prev) => {
+      const wId = split.wholesalerId;
+      const current = prev[wId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        [wId]: {
+          ...current,
+          escrowLockedBalanceKES: current.escrowLockedBalanceKES + split.wholesalerNetPayoutKES,
+        },
+      };
+    });
+
+    if (newOrder.riderId) {
+      const rId = newOrder.riderId;
+      setRiderWallets((prev) => {
+        const curRider = prev[rId];
+        if (!curRider) return prev;
+        return {
+          ...prev,
+          [rId]: {
+            ...curRider,
+            escrowLockedBalanceKES: curRider.escrowLockedBalanceKES + split.riderNetEarningsKES,
+          },
+        };
+      });
+    }
+
     if (conversionResult.attributedCampaigns.length > 0) {
       logEvent('PROMOTION_CONVERTED', {
         orderId: newOrder.id,
@@ -545,8 +608,176 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (nextStatus === 'SUPPLIER_CONFIRMED' || nextStatus === 'ACCEPTED') logEvent('SUPPLIER_ACCEPTED', { orderId, note, actor });
     if (nextStatus === 'PICKED_UP') logEvent('ORDER_PICKED_UP', { orderId, note });
-    if (nextStatus === 'DELIVERED') logEvent('ORDER_DELIVERED', { orderId, note });
+    if (nextStatus === 'DELIVERED') {
+      logEvent('ORDER_DELIVERED', { orderId, note });
+
+      // Wayno SafeSettle: Release funds from Escrow into Wholesaler and Rider available balances
+      const targetOrder = orders.find((o) => o.id === orderId);
+      if (targetOrder) {
+        const split = calculateOrderRevenueSplit(targetOrder);
+        const wId = split.wholesalerId;
+
+        setWholesalerWallets((prev) => {
+          const curW = prev[wId] || {
+            wholesalerId: wId,
+            wholesalerName: split.wholesalerName,
+            availableBalanceKES: 0,
+            escrowLockedBalanceKES: 0,
+            totalLifetimeEarnedKES: 0,
+            totalWithdrawnKES: 0,
+            payoutMethod: 'BANK_PESALINK',
+            autoSweepSchedule: 'DAILY_1700_EOD',
+          };
+          return {
+            ...prev,
+            [wId]: {
+              ...curW,
+              availableBalanceKES: curW.availableBalanceKES + split.wholesalerNetPayoutKES,
+              escrowLockedBalanceKES: Math.max(0, curW.escrowLockedBalanceKES - split.wholesalerNetPayoutKES),
+              totalLifetimeEarnedKES: curW.totalLifetimeEarnedKES + split.wholesalerNetPayoutKES,
+            },
+          };
+        });
+
+        const rId = targetOrder.riderId || split.riderId;
+        if (rId) {
+          setRiderWallets((prev) => {
+            const curR = prev[rId] || {
+              riderId: rId,
+              riderName: targetOrder.riderName || 'Assigned Rider',
+              riderPhone: targetOrder.riderPhone || '+254 700 000 000',
+              availableBalanceKES: 0,
+              escrowLockedBalanceKES: 0,
+              totalLifetimeEarnedKES: 0,
+              totalWithdrawnKES: 0,
+              completedRunsCount: 0,
+            };
+            return {
+              ...prev,
+              [rId]: {
+                ...curR,
+                availableBalanceKES: curR.availableBalanceKES + split.riderNetEarningsKES,
+                escrowLockedBalanceKES: Math.max(0, curR.escrowLockedBalanceKES - split.riderNetEarningsKES),
+                totalLifetimeEarnedKES: curR.totalLifetimeEarnedKES + split.riderNetEarningsKES,
+                completedRunsCount: curR.completedRunsCount + 1,
+              },
+            };
+          });
+        }
+      }
+    }
     if (nextStatus === 'FAILED') logEvent('ORDER_DELIVERY_FAILED', { orderId, note });
+  };
+
+  // SafeSettle: Wholesaler Bank / M-Pesa B2B Sweep Handler
+  const handleWholesalerWithdrawal = (
+    wholesalerId: string, 
+    amountKES: number, 
+    note?: string
+  ): { success: boolean; message: string; record?: SettlementPayoutRecord } => {
+    const wallet = wholesalerWallets[wholesalerId];
+    if (!wallet) return { success: false, message: 'Wholesaler wallet record not found' };
+    if (amountKES <= 0) return { success: false, message: 'Withdrawal amount must be greater than zero' };
+    if (amountKES > wallet.availableBalanceKES) {
+      return { 
+        success: false, 
+        message: `Insufficient available balance. Maximum withdrawable: KES ${wallet.availableBalanceKES.toLocaleString()}` 
+      };
+    }
+
+    const refNum = wallet.payoutMethod === 'BANK_PESALINK' 
+      ? `PESALINK-${Math.floor(1000000 + Math.random() * 9000000)}` 
+      : `QG${Math.floor(10000000 + Math.random() * 90000000)}KE`;
+
+    const destination = wallet.payoutMethod === 'BANK_PESALINK' 
+      ? `${wallet.bankName || 'Equity Bank'} (Acc: ${wallet.accountNumber || 'Primary Account'})`
+      : `M-Pesa B2B ${wallet.paybillNumber || 'Paybill'}`;
+
+    const payoutRecord: SettlementPayoutRecord = {
+      id: `PAYOUT-${Math.floor(1000 + Math.random() * 9000)}`,
+      recipientType: 'WHOLESALER',
+      recipientId: wholesalerId,
+      recipientName: wallet.wholesalerName,
+      amountKES,
+      channel: wallet.payoutMethod,
+      destinationRef: destination,
+      referenceNumber: refNum,
+      status: 'COMPLETED',
+      initiatedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      feeKES: 0,
+      note: note || `Disbursed KES ${amountKES.toLocaleString()} via ${wallet.payoutMethod}`,
+    };
+
+    setWholesalerWallets((prev) => ({
+      ...prev,
+      [wholesalerId]: {
+        ...wallet,
+        availableBalanceKES: wallet.availableBalanceKES - amountKES,
+        totalWithdrawnKES: wallet.totalWithdrawnKES + amountKES,
+        lastSweepAt: 'Just now',
+      },
+    }));
+
+    setSettlementPayouts((prev) => [payoutRecord, ...prev]);
+
+    return {
+      success: true,
+      message: `Transfer complete! KES ${amountKES.toLocaleString()} disbursed to ${destination}. Ref: ${refNum}`,
+      record: payoutRecord,
+    };
+  };
+
+  // SafeSettle: Rider Instant Daraja B2C Cashout Handler
+  const handleRiderWithdrawal = (
+    riderId: string, 
+    amountKES: number
+  ): { success: boolean; message: string; record?: SettlementPayoutRecord } => {
+    const wallet = riderWallets[riderId];
+    if (!wallet) return { success: false, message: 'Rider wallet record not found' };
+    if (amountKES < 50) return { success: false, message: 'Minimum M-Pesa withdrawal is KES 50' };
+    if (amountKES > wallet.availableBalanceKES) {
+      return { 
+        success: false, 
+        message: `Insufficient available balance. Maximum withdrawable: KES ${wallet.availableBalanceKES.toLocaleString()}` 
+      };
+    }
+
+    const refNum = `QG${Math.floor(10000000 + Math.random() * 90000000)}KE`;
+
+    const payoutRecord: SettlementPayoutRecord = {
+      id: `PAYOUT-${Math.floor(1000 + Math.random() * 9000)}`,
+      recipientType: 'RIDER',
+      recipientId: riderId,
+      recipientName: wallet.riderName,
+      amountKES,
+      channel: 'MPESA_B2C',
+      destinationRef: wallet.riderPhone,
+      referenceNumber: refNum,
+      status: 'COMPLETED',
+      initiatedAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+      feeKES: 0,
+      note: `Instant Daraja B2C cashout dispatched to ${wallet.riderPhone}`,
+    };
+
+    setRiderWallets((prev) => ({
+      ...prev,
+      [riderId]: {
+        ...wallet,
+        availableBalanceKES: wallet.availableBalanceKES - amountKES,
+        totalWithdrawnKES: wallet.totalWithdrawnKES + amountKES,
+        lastCashoutAt: 'Just now',
+      },
+    }));
+
+    setSettlementPayouts((prev) => [payoutRecord, ...prev]);
+
+    return {
+      success: true,
+      message: `Cashout sent! KES ${amountKES.toLocaleString()} credited to ${wallet.riderPhone}. Safaricom Receipt: ${refNum}`,
+      record: payoutRecord,
+    };
   };
 
   const handleAssignRider = (orderId: string, rider: Rider) => {
@@ -955,6 +1186,13 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         trackingOrder,
         activeOrdersCount,
         cartCount,
+
+        // Wayno SafeSettle Wallets & Escrow
+        wholesalerWallets,
+        riderWallets,
+        settlementPayouts,
+        handleWholesalerWithdrawal,
+        handleRiderWithdrawal,
 
         // Section 13: Product Management & Wholesaler Adoption
         products,

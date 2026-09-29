@@ -33,8 +33,10 @@ import {
 import { Order, WholesalerLocation, Product, SupplierProduct } from '../types/wayno';
 import { WHOLESALERS } from '../data/mockData';
 import { useWayno } from '../context/WaynoContext';
+import { SafeImage } from './common/SafeImage';
+import { WholesalerSettlementView } from './wholesaler/WholesalerSettlementView';
 
-export type WholesalerPage = 'dispatch' | 'inventory' | 'analytics';
+export type WholesalerPage = 'dispatch' | 'inventory' | 'settlements' | 'analytics';
 
 interface WholesalerPortalProps {
   orders: Order[];
@@ -307,6 +309,18 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
           </button>
 
           <button
+            onClick={() => setCurrentPage('settlements')}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap ${
+              currentPage === 'settlements'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Escrow & Revenue Settlements</span>
+          </button>
+
+          <button
             onClick={() => setCurrentPage('analytics')}
             className={`flex items-center space-x-1.5 px-3 py-1.5 rounded font-medium transition-colors whitespace-nowrap ${
               currentPage === 'analytics'
@@ -315,7 +329,7 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5" />
-            <span>Depot Analytics & Settlements</span>
+            <span>Depot Performance & Logistics</span>
           </button>
         </div>
       </div>
@@ -769,10 +783,11 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
                         <tr key={sp.id} className="hover:bg-slate-50 transition-colors">
                           <td className="py-2.5 px-3.5">
                             <div className="flex items-center space-x-2.5">
-                              <img
+                              <SafeImage
                                 src={product.image}
                                 alt={product.name}
-                                referrerPolicy="no-referrer"
+                                category={product.internalCategory}
+                                productName={product.name}
                                 className="w-9 h-9 rounded object-cover bg-slate-100 shrink-0 border border-slate-200"
                               />
                               <div>
@@ -928,10 +943,11 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
                         >
                           <td className="py-2.5 px-3.5">
                             <div className="flex items-center space-x-2.5">
-                              <img
+                              <SafeImage
                                 src={product.image}
                                 alt={product.name}
-                                referrerPolicy="no-referrer"
+                                category={product.internalCategory}
+                                productName={product.name}
                                 className="w-9 h-9 rounded object-cover bg-slate-100 shrink-0 border border-slate-200"
                               />
                               <div>
@@ -1068,10 +1084,11 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
             <form onSubmit={handleConfirmAdoption} className="p-5 space-y-4 text-xs">
               {/* Product Info Card */}
               <div className="flex items-start space-x-3 p-3 bg-slate-50 rounded border border-slate-200">
-                <img
+                <SafeImage
                   src={adoptingProduct.image}
                   alt={adoptingProduct.name}
-                  referrerPolicy="no-referrer"
+                  category={adoptingProduct.internalCategory}
+                  productName={adoptingProduct.name}
                   className="w-12 h-12 rounded object-cover bg-white shrink-0 border border-slate-200"
                 />
                 <div className="flex-1 min-w-0">
@@ -1199,10 +1216,11 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
 
             <form onSubmit={handleConfirmAlteration} className="p-5 space-y-4 text-xs">
               <div className="flex items-center space-x-3 p-2.5 bg-slate-50 rounded border border-slate-200">
-                <img
+                <SafeImage
                   src={alteringSp.product.image}
                   alt={alteringSp.product.name}
-                  referrerPolicy="no-referrer"
+                  category={alteringSp.product.internalCategory}
+                  productName={alteringSp.product.name}
                   className="w-10 h-10 rounded object-cover bg-white shrink-0 border border-slate-200"
                 />
                 <div className="min-w-0">
@@ -1264,7 +1282,17 @@ export const WholesalerPortal: React.FC<WholesalerPortalProps> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* PAGE 3: DEPOT ANALYTICS & SETTLEMENTS                                     */}
+      {/* PAGE 3: ESCROW & REVENUE SETTLEMENTS (SAFESETTLE)                         */}
+      {/* ========================================================================= */}
+      {currentPage === 'settlements' && (
+        <WholesalerSettlementView
+          wholesaler={currentWholesaler}
+          orders={wholesalerOrders}
+        />
+      )}
+
+      {/* ========================================================================= */}
+      {/* PAGE 4: DEPOT PERFORMANCE ANALYTICS                                       */}
       {/* ========================================================================= */}
       {currentPage === 'analytics' && (
         <div className="space-y-4">

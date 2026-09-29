@@ -34,6 +34,7 @@ import {
 } from '../types/recommendation';
 import { INITIAL_SHOPS, PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS } from '../data/mockData';
 import { RetailerShop, Order } from '../types/wayno';
+import { SafeImage } from './common/SafeImage';
 
 interface RecommendationEngineConsoleProps {
   orders?: Order[];
@@ -423,10 +424,11 @@ export const RecommendationEngineConsole: React.FC<RecommendationEngineConsolePr
                       <span className="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-[11px] shrink-0 font-mono">
                         #{item.rank}
                       </span>
-                      <img 
+                      <SafeImage 
                         src={item.product.image} 
                         alt={item.product.name}
-                        referrerPolicy="no-referrer"
+                        category={item.product.internalCategory}
+                        productName={item.product.name}
                         className="w-11 h-11 object-cover rounded border border-slate-100 bg-slate-50 shrink-0" 
                       />
                       <div className="min-w-0">

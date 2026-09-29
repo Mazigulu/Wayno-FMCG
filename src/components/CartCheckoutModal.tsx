@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { CartItem, Order, RetailerShop, Product, SupplierProduct, OrderItem } from '../types/wayno';
 import { paymentService } from '../services/paymentService';
+import { SafeImage } from './common/SafeImage';
 import { PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS } from '../data/mockData';
 import {
   calculateOrderPayload,
@@ -280,10 +281,11 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
                         className="bg-slate-50 border border-slate-200 rounded p-2.5 flex items-center justify-between gap-3"
                       >
                         <div className="flex items-center space-x-2.5 min-w-0">
-                          <img
+                          <SafeImage
                             src={item.product.image}
                             alt={item.product.name}
-                            referrerPolicy="no-referrer"
+                            category={item.product.internalCategory}
+                            productName={item.product.name}
                             className="w-10 h-10 rounded object-cover bg-white border border-slate-200 shrink-0"
                           />
                           <div className="min-w-0">

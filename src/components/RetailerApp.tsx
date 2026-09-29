@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { 
   Search, 
   ShoppingBag, 
@@ -62,6 +62,7 @@ import {
   RecommendationExecutionResult 
 } from '../types/recommendation';
 import { RetailerRecommendationTray } from './RetailerRecommendationTray';
+import { SafeImage } from './common/SafeImage';
 
 export type RetailerPage = 'catalog' | 'orders' | 'profile';
 
@@ -94,9 +95,14 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   onOrderClick,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Read initial query from URL search parameters or navigation state
+  const initialUrlQuery = searchParams.get('q') || (location.state as any)?.searchQuery || '';
   const [currentPage, setCurrentPage] = useState<RetailerPage>('catalog');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchSubmitted, setIsSearchSubmitted] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState(initialUrlQuery);
+  const [isSearchSubmitted, setIsSearchSubmitted] = useState<boolean>(Boolean(initialUrlQuery.trim()));
   const [searchResult, setSearchResult] = useState<SearchExecutionResultEnhanced | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [addedAnimationId, setAddedAnimationId] = useState<string | null>(null);
@@ -245,6 +251,18 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
     setDemandAlertSent(false);
   }, [searchQuery, currentShop, rankingStrategy]);
 
+  // Synchronize when URL search parameters or location navigation state changes
+  useEffect(() => {
+    const qFromUrl = searchParams.get('q');
+    const qFromState = (location.state as any)?.searchQuery;
+    const currentQ = qFromUrl !== null ? qFromUrl : (qFromState !== undefined ? qFromState : null);
+
+    if (currentQ !== null && currentQ !== searchQuery) {
+      setSearchQuery(currentQ);
+      setIsSearchSubmitted(Boolean(currentQ.trim()));
+    }
+  }, [searchParams, location.state]);
+
   const handleSearchSubmit = (overrideQuery?: string) => {
     const q = overrideQuery !== undefined ? overrideQuery : searchQuery;
     if (q.trim().length > 0) {
@@ -252,8 +270,10 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
         setSearchQuery(overrideQuery);
       }
       setIsSearchSubmitted(true);
+      setSearchParams({ q: q.trim() }, { replace: true });
     } else {
       setIsSearchSubmitted(false);
+      setSearchParams({}, { replace: true });
     }
     setSelectedCategory('All');
     setIsAutocompleteOpen(false);
@@ -267,6 +287,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   const handleChipClick = (query: string) => {
     setSearchQuery(query);
     setIsSearchSubmitted(true);
+    setSearchParams({ q: query }, { replace: true });
     setSelectedCategory('All');
     setIsAutocompleteOpen(false);
     setIsMobileSearchOpen(false);
@@ -275,6 +296,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   const handleResetToHome = () => {
     setSearchQuery('');
     setIsSearchSubmitted(false);
+    setSearchParams({}, { replace: true });
     setSelectedCategory('All');
     setIsAutocompleteOpen(false);
     setIsMobileSearchOpen(false);
@@ -1182,7 +1204,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                   </div>
                 </div>
 
-                {/* Google-Style Action Buttons & Sort Strip */}
+                {/* Action Button & Sort Strip */}
                 <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 pt-1 text-xs">
                   <button
                     type="button"
@@ -1196,18 +1218,6 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                     className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-3 sm:px-4 py-1.5 rounded-full cursor-pointer border border-slate-200 text-xs"
                   >
                     Search Wholesale
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const randomChip = SUGGESTED_CHIPS[Math.floor(Math.random() * SUGGESTED_CHIPS.length)];
-                      handleChipClick(randomChip.query);
-                    }}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold px-3 sm:px-4 py-1.5 rounded-full cursor-pointer border border-slate-200 flex items-center space-x-1.5 text-xs"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>I'm Feeling Lucky</span>
                   </button>
 
                   {/* Ranking Mode Dropdown */}
@@ -1224,24 +1234,6 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                       <option value="MARGIN_HIGH">Max Profit Margin</option>
                     </select>
                   </div>
-                </div>
-
-                {/* Popular Suggested Presets as Google-style pills */}
-                <div className="flex items-center justify-center flex-wrap gap-1.5 pt-1 text-xs">
-                  <span className="text-slate-400 font-medium text-[11px] mr-1">Trending:</span>
-                  {SUGGESTED_CHIPS.map((chip) => (
-                    <button
-                      key={chip.query}
-                      onClick={() => handleChipClick(chip.query)}
-                      className={`px-3 py-1 rounded-full font-medium text-xs cursor-pointer border ${
-                        searchQuery.toLowerCase() === chip.query.toLowerCase()
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      {chip.label}
-                    </button>
-                  ))}
                 </div>
 
                 {/* Category Filter Buttons */}
@@ -1292,80 +1284,26 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
 
           {/* Product Results Grid */}
           <div className="space-y-3">
-            {/* Google Results Stats Bar & Did You Mean Spell Check */}
-            {isSearchSubmitted && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-100">
-                  <div className="flex items-center space-x-1.5 flex-wrap">
-                    <span className="text-[11px] text-slate-600 font-medium">
-                      About {displayedResults.length} wholesale {displayedResults.length === 1 ? 'result' : 'results'} ({((searchResult?.executionTimeMs || 4) / 1000).toFixed(2)}s)
-                    </span>
-                    <span className="text-slate-300">·</span>
-                    <span className="text-[11px] text-slate-500">
-                      Nairobi {currentShop.serviceZoneId.replace(/_/g, ' ')} corridor
-                    </span>
-                  </div>
-                  <button
-                    onClick={handleResetToHome}
-                    className="text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer text-xs shrink-0 ml-2"
-                  >
-                    Clear / Home
-                  </button>
-                </div>
-
-                {searchResult?.fallback?.didYouMean && (
-                  <div className="bg-blue-50/90 border border-blue-200 rounded-lg p-2.5 sm:p-3 text-xs text-slate-800 flex items-center space-x-1.5 shadow-2xs">
-                    <span className="text-slate-600">
-                      Showing results for <span className="font-semibold text-slate-900 italic">"{searchQuery}"</span>. Did you mean:
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const fallback = searchResult?.fallback?.didYouMean || '';
-                        setSelectedCategory('All');
-                        setSearchQuery(fallback);
-                        handleSearchSubmit(fallback);
-                      }}
-                      className="font-bold text-blue-700 underline hover:text-blue-900 cursor-pointer italic"
-                    >
-                      "{searchResult.fallback.didYouMean}"
-                    </button>?
-                  </div>
-                )}
+            {/* Did You Mean Spell Check (if available) */}
+            {isSearchSubmitted && searchResult?.fallback?.didYouMean && (
+              <div className="bg-blue-50/90 border border-blue-200 rounded-lg p-2.5 sm:p-3 text-xs text-slate-800 flex items-center space-x-1.5 shadow-2xs">
+                <span className="text-slate-600">
+                  Showing results for <span className="font-semibold text-slate-900 italic">"{searchQuery}"</span>. Did you mean:
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const fallback = searchResult?.fallback?.didYouMean || '';
+                    setSelectedCategory('All');
+                    setSearchQuery(fallback);
+                    handleSearchSubmit(fallback);
+                  }}
+                  className="font-bold text-blue-700 underline hover:text-blue-900 cursor-pointer italic"
+                >
+                  "{searchResult.fallback.didYouMean}"
+                </button>?
               </div>
             )}
-
-            <div className="flex items-center justify-between">
-              {isSearchSubmitted ? (
-                <div className="flex items-center space-x-2">
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Wholesale Results for <span className="text-blue-700 normal-case font-extrabold">"{searchQuery}"</span>
-                  </h3>
-                  {selectedCategory !== 'All' && (
-                    <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold">
-                      Category: {selectedCategory}
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Wholesale FMCG Stock List ({selectedCategory})
-                </h3>
-              )}
-              <div className="flex items-center space-x-2 text-xs text-slate-500">
-                <span className="hidden sm:inline">
-                  Verified regional suppliers in {currentShop.serviceZoneId.replace(/_/g, ' ')}
-                </span>
-                {isSearchSubmitted && (
-                  <button
-                    onClick={handleResetToHome}
-                    className="text-blue-600 hover:text-blue-800 font-semibold underline cursor-pointer text-xs"
-                  >
-                    View all products
-                  </button>
-                )}
-              </div>
-            </div>
 
             {/* Zero-Result Recovery View */}
             {displayedResults.length === 0 ? (
@@ -1479,7 +1417,16 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                           <div
                             key={sub.product.id}
                             onClick={() => {
-                              navigate(`/product/${sub.product.id}`);
+                              window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                              document.documentElement.scrollTop = 0;
+                              document.body.scrollTop = 0;
+                              navigate(`/product/${sub.product.id}`, {
+                                state: {
+                                  fromSearch: Boolean(searchQuery.trim()),
+                                  searchQuery: searchQuery.trim(),
+                                  category: selectedCategory,
+                                }
+                              });
                             }}
                             className="p-2.5 border border-slate-200 rounded hover:border-slate-300 hover:shadow-2xs cursor-pointer transition-all bg-white group"
                           >
@@ -1555,18 +1502,27 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                         <div
                           onClick={() => {
                             recordSearchResultClick(searchQuery || 'catalog', product.id);
-                            navigate(`/product/${product.id}`);
+                            window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                            document.documentElement.scrollTop = 0;
+                            document.body.scrollTop = 0;
+                            navigate(`/product/${product.id}`, {
+                              state: {
+                                fromSearch: Boolean(searchQuery.trim()),
+                                searchQuery: searchQuery.trim(),
+                                category: selectedCategory,
+                              }
+                            });
                           }}
                           className="cursor-pointer group space-y-2.5"
                         >
                           {/* Image & Pack badge */}
                           <div className="relative h-36 w-full rounded overflow-hidden bg-slate-50 border border-slate-100">
-                            <img
+                            <SafeImage
                               src={product.image}
                               alt={product.name}
-                              referrerPolicy="no-referrer"
+                              category={product.internalCategory}
+                              productName={product.name}
                               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              loading="lazy"
                             />
                             <div className="absolute top-2 left-2 bg-white/95 px-2 py-0.5 rounded border border-slate-200 text-[10px] font-semibold text-slate-900">
                               {product.packSize}
@@ -1690,7 +1646,16 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                         <div
                           onClick={() => {
                             recordSearchResultClick(searchQuery || 'catalog', product.id);
-                            navigate(`/product/${product.id}`);
+                            window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                            document.documentElement.scrollTop = 0;
+                            document.body.scrollTop = 0;
+                            navigate(`/product/${product.id}`, {
+                              state: {
+                                fromSearch: Boolean(searchQuery.trim()),
+                                searchQuery: searchQuery.trim(),
+                                category: selectedCategory,
+                              }
+                            });
                           }}
                           className="cursor-pointer"
                         >
@@ -1705,11 +1670,7 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
                               <span className="text-[10px] text-slate-400 line-through font-mono">
                                 KES {wholesalePrice.toLocaleString()}
                               </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400 line-through">
-                                KES {rrp.toLocaleString()}
-                              </span>
-                            )}
+                            ) : null}
                           </div>
                         </div>
 
