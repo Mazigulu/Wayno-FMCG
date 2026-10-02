@@ -63,6 +63,9 @@ import {
 } from '../types/recommendation';
 import { RetailerRecommendationTray } from './RetailerRecommendationTray';
 import { SafeImage } from './common/SafeImage';
+import { RetailerRefundAlertBanner } from './retailer/RetailerRefundAlertBanner';
+import { RetailerNotificationBell } from './retailer/RetailerNotificationBell';
+import { useWayno } from '../context/WaynoContext';
 
 export type RetailerPage = 'catalog' | 'orders' | 'profile';
 
@@ -97,6 +100,11 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { orders } = useWayno();
+
+  const refundedOrders = orders.filter(
+    (o) => (o.retailerId === currentShop.retailerId || o.shopName === currentShop.name) && (o.status === 'REFUNDED' || Boolean(o.refundRecord))
+  );
 
   // Read initial query from URL search parameters or navigation state
   const initialUrlQuery = searchParams.get('q') || (location.state as any)?.searchQuery || '';
@@ -568,8 +576,9 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
             </div>
           </div>
 
-          {/* Quick shop switcher */}
-          <div className="flex items-center space-x-2 shrink-0 min-w-0 max-w-full sm:max-w-[240px] md:max-w-[280px]">
+          {/* Quick shop switcher & Notification Center */}
+          <div className="flex items-center space-x-2 shrink-0 min-w-0 max-w-full sm:max-w-[280px] md:max-w-[340px]">
+            <RetailerNotificationBell onOrderClick={onOrderClick} />
             <label className="text-[11px] text-slate-500 font-medium hidden md:inline shrink-0">Switch Duka:</label>
             <select
               value={currentShop.id}
@@ -637,6 +646,9 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Automated In-App Refund Alert Banner (Prominent notification when admin processes refund) */}
+      <RetailerRefundAlertBanner onOrderClick={onOrderClick} />
 
       {/* ========================================================================= */}
       {/* PAGE 1: CATALOG & SEARCH                                                 */}
@@ -1856,6 +1868,70 @@ export const RetailerApp: React.FC<RetailerAppProps> = ({
               </div>
             )}
           </div>
+
+          {/* Refunded Orders & M-Pesa Reversals (Audited by Admin) */}
+          {refundedOrders.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-slate-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                  <span>M-Pesa Refunded Orders & Reversals ({refundedOrders.length})</span>
+                </h3>
+                <span className="text-[11px] text-emerald-700 font-semibold">
+                  Verified by Admin
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {refundedOrders.map((order) => {
+                  const ref = order.refundRecord;
+                  return (
+                    <div
+                      key={order.id}
+                      className="bg-emerald-50/60 border border-emerald-300 rounded-md p-3.5 space-y-2.5 shadow-2xs"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                          <span className="font-mono text-sm font-bold text-slate-900">{order.id}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-700 text-white px-2 py-0.5 rounded shadow-2xs">
+                            M-PESA REFUNDED
+                          </span>
+                          {ref?.mpesaReversalRef && (
+                            <span className="text-[11px] text-emerald-900 font-mono font-bold">
+                              Safaricom Ref: {ref.mpesaReversalRef}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center space-x-3">
+                          <span className="text-xs font-mono font-bold text-emerald-900">
+                            Reversed: KES {(ref?.amount || order.totalAmount).toLocaleString()}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onOrderClick(order)}
+                            className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 underline cursor-pointer"
+                          >
+                            View Audit Ledger
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-700 bg-white/90 p-2.5 rounded border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
+                        <div>
+                          <strong className="text-slate-900">Reason: </strong>
+                          <span className="italic">{ref?.reason || 'Approved refund processed by admin'}</span>
+                        </div>
+                        <div className="text-slate-500 shrink-0 font-mono">
+                          Reversed: {ref?.completedAt ? new Date(ref.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Past Completed Orders */}
           <div className="space-y-3 pt-4 border-t border-slate-200">

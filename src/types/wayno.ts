@@ -209,6 +209,37 @@ export interface RefundRecord {
   status: 'PENDING' | 'COMPLETED' | 'FAILED';
 }
 
+export interface RetailerNotification {
+  id: string;
+  orderId: string;
+  retailerId: string;
+  shopName: string;
+  type: 'REFUND_PROCESSED' | 'REFUND_PENDING' | 'ORDER_UPDATE' | 'DELIVERY_EXCEPTION';
+  title: string;
+  message: string;
+  amountKES: number;
+  mpesaReversalRef: string;
+  recipientPhone: string;
+  reason: string;
+  timestamp: string;
+  read: boolean;
+  dismissed: boolean;
+}
+
+export interface DispatchSplitLeg {
+  splitIndex: number;
+  assignedVehicleType: 'BODA_BODA' | 'TUK_TUK' | 'PICKUP_VAN';
+  allocatedWeightKg: number;
+  allocatedVolumeCbm: number;
+  itemsSummary: string;
+  riderId?: string;
+  riderName?: string;
+  riderPhone?: string;
+  pickupOtp: string;
+  deliveryOtp: string;
+  status: 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DELIVERED';
+}
+
 export interface Order {
   id: string;
   retailerId: string;
@@ -233,11 +264,13 @@ export interface Order {
   pickupOtp: string;
   deliveryOtp: string;
   offlineDeliveryCode?: string; // USSD / SMS fallback code if retailer phone battery dies
+  offlineWaybillToken?: string; // Physical shipping label barcode / token strapped to bales
   estimatedDeliveryMins: number;
   totalWeightKg?: number; // Total weight of ordered cargo
   totalVolumeCbm?: number; // Total volume in cubic meters
   assignedVehicleType?: 'BODA_BODA' | 'TUK_TUK' | 'PICKUP_VAN';
   dispatchSplitsCount?: number; // Number of delivery runs required if cargo exceeds vehicle limit
+  dispatchManifest?: DispatchSplitLeg[]; // Synchronized multi-vehicle split dispatches
   stockReservedUntil?: string; // 15-minute virtual reservation expiration
   deliveryException?: DeliveryException;
   reconciliationStatus?: 'SETTLED' | 'PENDING' | 'DISCREPANCY' | 'REVERSED';

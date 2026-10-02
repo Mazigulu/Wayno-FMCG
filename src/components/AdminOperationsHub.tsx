@@ -37,6 +37,7 @@ import { DatabaseIndexingConsole } from './DatabaseIndexingConsole';
 import { RecommendationEngineConsole } from './RecommendationEngineConsole';
 import { ProductsMasterCatalog } from './operations/ProductsMasterCatalog';
 import { SupplyNodeTreeVisualizer } from './hierarchical/SupplyNodeTreeVisualizer';
+import { RateLimitingConsole } from './RateLimitingConsole';
 
 export type AdminSubTab = 
   | 'operations' 
@@ -47,6 +48,7 @@ export type AdminSubTab =
   | 'promotions' 
   | 'benchmark' 
   | 'rules' 
+  | 'ratelimit'
   | 'nfr' 
   | 'architecture' 
   | 'repository' 
@@ -106,6 +108,7 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
     if (path.includes('/demand') || path.includes('/forecast') || path.includes('/analytics')) return 'demand';
     if (path.includes('/benchmark') || path.includes('/search')) return 'benchmark';
     if (path.includes('/rules') || path.includes('/business-rules')) return 'rules';
+    if (path.includes('/ratelimit') || path.includes('/rate-limit') || path.includes('/throttle')) return 'ratelimit';
     if (path.includes('/nfr') || path.includes('/non-functional') || path.includes('/requirements')) return 'nfr';
     if (path.includes('/architecture') || path.includes('/flows') || path.includes('/navigation')) return 'architecture';
     if (path.includes('/repo') || path.includes('/repository') || path.includes('/monorepo')) return 'repository';
@@ -245,6 +248,14 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
           icon: Scale,
           badge: '14 Rules',
           badgeColor: 'bg-slate-100 text-slate-800 border-slate-200',
+        },
+        {
+          id: 'ratelimit',
+          label: 'Rate Limiting & Abuse',
+          sublabel: 'Token/Leaky Buckets & Tarpit',
+          icon: Zap,
+          badge: '4 Algos',
+          badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
         },
         {
           id: 'nfr',
@@ -549,6 +560,10 @@ export const AdminOperationsHub: React.FC<AdminOperationsHubProps> = ({
 
           {activeTab === 'rules' && (
             <BusinessRulesConsole />
+          )}
+
+          {activeTab === 'ratelimit' && (
+            <RateLimitingConsole />
           )}
 
           {activeTab === 'nfr' && (

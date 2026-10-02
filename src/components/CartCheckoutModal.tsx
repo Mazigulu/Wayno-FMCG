@@ -23,11 +23,14 @@ import {
 } from 'lucide-react';
 import { CartItem, Order, RetailerShop, Product, SupplierProduct, OrderItem } from '../types/wayno';
 import { paymentService } from '../services/paymentService';
+import { rateLimiter } from '../services/rateLimiterService';
 import { SafeImage } from './common/SafeImage';
 import { PRODUCTS, SUPPLIER_PRODUCTS, WHOLESALERS } from '../data/mockData';
 import {
   calculateOrderPayload,
   generateOfflineDeliveryCode,
+  generateOfflineWaybillToken,
+  buildDispatchSplitManifest,
   VirtualStockReservationManager,
 } from '../services/orderEngine';
 import { 
@@ -161,6 +164,18 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
     }
 
     const offlineDeliveryCode = generateOfflineDeliveryCode(orderId, phoneNumber);
+    const offlineWaybillToken = generateOfflineWaybillToken(orderId, deliveryOtp);
+    const dispatchManifest = buildDispatchSplitManifest(
+      orderId,
+      orderItems,
+      payloadAnalysis.totalWeightKg,
+      payloadAnalysis.totalVolumeCbm,
+      payloadAnalysis.dispatchSplitsCount,
+      payloadAnalysis.assignedVehicleType
+    );
+
+    const effectiveWholesalerLocationId = reserveAttempt.escalatedDepotId || primaryWholesalerLocationId;
+    const effectiveWholesalerName = reserveAttempt.escalatedDepotName || primaryWholesaler;
 
     // Build order object
     const newOrder: Order = {
@@ -179,7 +194,9 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         {
           state: 'CREATED',
           timestamp: new Date().toISOString(),
-          note: 'Order drafted by duka shopkeeper',
+          note: reserveAttempt.autoEscalated 
+            ? `Order drafted. Auto-escalated to ${effectiveWholesalerName} due to primary depot safety buffer floor.`
+            : 'Order drafted by duka shopkeeper',
         },
         {
           state: 'PAYMENT_PENDING',
@@ -188,22 +205,32 @@ export const CartCheckoutModal: React.FC<CartCheckoutModalProps> = ({
         },
       ],
       paymentMethod: selectedProvider.toUpperCase().replace(/\s+/g, '_') as any,
-      wholesalerLocationId: primaryWholesalerLocationId,
-      wholesalerName: primaryWholesaler,
+      wholesalerLocationId: effectiveWholesalerLocationId,
+      wholesalerName: effectiveWholesalerName,
       pickupOtp,
       deliveryOtp,
       offlineDeliveryCode,
+      offlineWaybillToken,
       estimatedDeliveryMins: 28,
       totalWeightKg: payloadAnalysis.totalWeightKg,
       totalVolumeCbm: payloadAnalysis.totalVolumeCbm,
       assignedVehicleType: payloadAnalysis.assignedVehicleType,
       dispatchSplitsCount: payloadAnalysis.dispatchSplitsCount,
+      dispatchManifest,
       stockReservedUntil: reserveAttempt.reservedUntil,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
 
     try {
+      // Rate Limiting Protection (Leaky bucket protects checkout queue & inventory locking)
+      const rateLimitDecision = rateLimiter.checkRateLimit('CHECKOUT_ORDER', currentShop.id);
+      if (!rateLimitDecision.allowed) {
+        setPaymentStep('REVIEW');
+        setErrorMessage(rateLimitDecision.reason || `Traffic queue full. Please wait ${rateLimitDecision.retryAfterSec || 10}s before retrying.`);
+        return;
+      }
+
       // SECTION 25: Application talks strictly to PaymentService abstraction
       const result = await paymentService.initiatePayment({
         order: newOrder,

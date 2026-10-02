@@ -18,7 +18,8 @@
     "test:delivery": "tsx scripts/test-delivery-engine.ts",
     "test:edges": "tsx scripts/test-edge-cases.ts",
     "test:checkout": "tsx scripts/test-e2e-checkout-pipeline.ts",
-    "test:production": "tsx scripts/test-production-multi-persona.ts"
+    "test:production": "tsx scripts/test-production-multi-persona.ts",
+    "test:rapid": "tsx scripts/test-rapid-replenishment-e2e.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

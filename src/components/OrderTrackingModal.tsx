@@ -188,10 +188,10 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({ order, o
                 <span>KES {order.refundRecord.amount.toLocaleString()}</span>
               </div>
               <div className="text-[11px] text-emerald-800">
-                Reversal ID: {order.refundRecord.reversalTransactionId}
+                Safaricom M-Pesa Reversal Ref: <strong className="font-bold">{order.refundRecord.mpesaReversalRef || order.refundRecord.reversalTransactionId || order.refundRecord.refundId}</strong>
               </div>
               <div className="text-[10px] text-emerald-700 font-sans">
-                Reason: {order.refundRecord.reason} · Handled by: {order.refundRecord.authorizedBy}
+                Reason: {order.refundRecord.reason} · Authorized by: {order.refundRecord.authorizedBy || 'Admin Operations Desk'}
               </div>
             </div>
           )}

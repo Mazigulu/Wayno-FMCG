@@ -12,7 +12,8 @@ import {
   PaymentTransaction,
   Payment,
   DeliveryExceptionCode,
-  DeliveryException
+  DeliveryException,
+  RetailerNotification
 } from '../types/wayno';
 import { 
   INITIAL_SHOPS, 
@@ -60,6 +61,13 @@ interface WaynoContextType {
     riderId: string, 
     amountKES: number
   ) => { success: boolean; message: string; record?: SettlementPayoutRecord };
+
+  // Automated Retailer Notifications (Refunds & Incident Alerts)
+  retailerNotifications: RetailerNotification[];
+  unreadNotificationCount: number;
+  dismissRetailerNotification: (notificationId: string) => void;
+  markRetailerNotificationAsRead: (notificationId: string) => void;
+  clearAllRetailerNotifications: () => void;
 
   // Section 13: Product Management & Wholesaler Adoption
   products: Product[];
@@ -118,6 +126,44 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [wholesalerWallets, setWholesalerWallets] = useState<Record<string, WholesalerWallet>>(INITIAL_WHOLESALER_WALLETS);
   const [riderWallets, setRiderWallets] = useState<Record<string, RiderWallet>>(INITIAL_RIDER_WALLETS);
   const [settlementPayouts, setSettlementPayouts] = useState<SettlementPayoutRecord[]>(INITIAL_SETTLEMENT_HISTORY);
+
+  // Automated Retailer Notifications (Refunds & Incident Alerts)
+  const [retailerNotifications, setRetailerNotifications] = useState<RetailerNotification[]>([
+    {
+      id: 'notif_seed_01',
+      orderId: 'WN-781920',
+      retailerId: INITIAL_SHOPS[0].retailerId,
+      shopName: INITIAL_SHOPS[0].name,
+      type: 'REFUND_PROCESSED',
+      title: 'M-Pesa Refund Processed',
+      message: 'Admin has verified and reversed funds directly to your M-Pesa account.',
+      amountKES: 2400,
+      mpesaReversalRef: 'REV_88192031KE',
+      recipientPhone: INITIAL_SHOPS[0].phone,
+      reason: 'Wholesaler inventory short-shipment (Damaged Cooking Oil carton)',
+      timestamp: new Date(Date.now() - 3600000).toISOString(),
+      read: false,
+      dismissed: false,
+    },
+  ]);
+
+  const dismissRetailerNotification = (notificationId: string) => {
+    setRetailerNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, dismissed: true, read: true } : n))
+    );
+  };
+
+  const markRetailerNotificationAsRead = (notificationId: string) => {
+    setRetailerNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+    );
+  };
+
+  const clearAllRetailerNotifications = () => {
+    setRetailerNotifications((prev) =>
+      prev.map((n) => ({ ...n, dismissed: true, read: true }))
+    );
+  };
 
   // Section 13: Product Management state
   const [products, setProducts] = useState<Product[]>(PRODUCTS);
@@ -995,6 +1041,69 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedAt: new Date().toISOString()
       } : p));
 
+      // SafeSettle: Unwind escrow or debit wholesaler wallet
+      const split = calculateOrderRevenueSplit(targetOrder);
+      const wId = split.wholesalerId;
+      setWholesalerWallets((prev) => {
+        const curW = prev[wId];
+        if (!curW) return prev;
+        // If order was in transit / escrow (pre-delivery exception):
+        if (targetOrder.status !== 'DELIVERED') {
+          return {
+            ...prev,
+            [wId]: {
+              ...curW,
+              escrowLockedBalanceKES: Math.max(0, curW.escrowLockedBalanceKES - split.wholesalerNetPayoutKES),
+            },
+          };
+        } else {
+          // Post-delivery dispute/chargeback clawback:
+          return {
+            ...prev,
+            [wId]: {
+              ...curW,
+              availableBalanceKES: curW.availableBalanceKES - split.wholesalerNetPayoutKES,
+              totalLifetimeEarnedKES: Math.max(0, curW.totalLifetimeEarnedKES - split.wholesalerNetPayoutKES),
+            },
+          };
+        }
+      });
+
+      if (targetOrder.status !== 'DELIVERED' && targetOrder.riderId) {
+        const rId = targetOrder.riderId;
+        setRiderWallets((prev) => {
+          const curR = prev[rId];
+          if (!curR) return prev;
+          return {
+            ...prev,
+            [rId]: {
+              ...curR,
+              escrowLockedBalanceKES: Math.max(0, curR.escrowLockedBalanceKES - split.riderNetEarningsKES),
+            },
+          };
+        });
+      }
+
+      // Automated Retailer Notification: Alert the retailer on dashboard and in-app banner
+      const newNotif: RetailerNotification = {
+        id: `notif_ref_${Date.now()}`,
+        orderId: targetOrder.id,
+        retailerId: targetOrder.retailerId,
+        shopName: targetOrder.shopName,
+        type: 'REFUND_PROCESSED',
+        title: 'M-Pesa Refund Processed by Admin',
+        message: `Admin has verified and reversed KES ${amountKES.toLocaleString()} directly to your M-Pesa account.`,
+        amountKES,
+        mpesaReversalRef: result.reversalRef,
+        recipientPhone: targetOrder.retailerPhone,
+        reason,
+        timestamp: new Date().toISOString(),
+        read: false,
+        dismissed: false,
+      };
+
+      setRetailerNotifications((prev) => [newNotif, ...prev]);
+
       logEvent('PAYMENT_REVERSED', { orderId, reversalRef: result.reversalRef, amountKES });
       return true;
     }
@@ -1193,6 +1302,13 @@ export const WaynoProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         settlementPayouts,
         handleWholesalerWithdrawal,
         handleRiderWithdrawal,
+
+        // Automated Retailer Notifications
+        retailerNotifications,
+        unreadNotificationCount: retailerNotifications.filter((n) => !n.read && !n.dismissed).length,
+        dismissRetailerNotification,
+        markRetailerNotificationAsRead,
+        clearAllRetailerNotifications,
 
         // Section 13: Product Management & Wholesaler Adoption
         products,
